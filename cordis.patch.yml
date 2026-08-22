@@ -1,0 +1,6 @@
+# dsh bundle patch: inserts this plugin's Host half into a profile's layer
+# stack. The client half is discovered through the package's `dsh.client`
+# manifest and loaded into the Web GUI; only the Node half is a loader entry.
+- insert:
+    - id: dsh-capability-toggle-plugin
+      name: 'dsh-capability-toggle-plugin'
