@@ -118,7 +118,7 @@ const CSS = `
    (not all three at once — the earlier three-segment control turned every row
    into a wall of identical grey boxes). A two-state toggle: click flips on↔off;
    an unset level shows a faint neutral dash and flips to "off" on click. The
-   button colours by stance (on=green / off=red / unset=neutral outline) so a row
+   button colours by stance (on=brand blue / off=red / unset=neutral outline) so a row
    reads as one coloured dot per level. Once a level is explicitly set, a small
    clear badge appears at its top-right corner; clicking it reverts to unset. */
 .dshct-lvsw{position:relative;justify-self:center;display:inline-flex}
@@ -140,19 +140,21 @@ const CSS = `
 /* result badge in the last column */
 .dshct-badge{justify-self:center;padding:2px 9px;border-radius:999px;background:var(--dsw-alias-state-business-tertiary,var(--dsw-alias-bg-layer-1));color:var(--dsw-alias-state-business-primary,var(--dsw-alias-label-secondary));font-size:10.5px;line-height:15px;font-weight:600;white-space:nowrap}
 /* "disabled" badge: SOLID red with white text, not the tinted-background pattern
-   the "active" badge uses. Reason: there is no state-error-tertiary token (the
-   pale-tint step the business family has), and state-error-secondary resolves
-   to the SAME red-400 as state-error-primary in the light theme — tinted bg +
-   primary text rendered red-on-red, i.e. invisible label. A solid fill with
-   white text is contrast-safe in both themes and matches the "off" stance chip
-   on the switches, so the row's result and its switch read as one statement. */
+   the "active" badge uses. Reason: the error family has no tertiary (pale-tint)
+   step like the business family's state-business-tertiary, so the tinted pattern
+   has to borrow state-error-secondary as the background — and that resolves to
+   red-400, the SAME value state-error-primary takes in the DARK theme. Tinted bg
+   + primary text therefore rendered red-on-red (invisible label) in dark mode,
+   and only barely worked in light mode where primary happens to be red-600. A
+   solid fill with white text is contrast-safe in BOTH themes and matches the
+   "off" stance chip on the switches, so a row's result and its switch agree. */
 .dshct-badge[data-off=true]{background:var(--dsw-alias-state-error-primary);color:#fff}
 /* guard badge: an active guard's colour tracks its action (deny=error, ask=warning);
    inactive is neutral grey. Overrides the default [data-off] mapping above, whose
    on/off polarity does not apply to a guard's active/inactive meaning. */
 .dshct-badge-guard[data-off=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-caption)}
 /* deny: solid red + white text, for the same reason as the "disabled" badge above
-   (tinted error bg resolves to the same red as error text — an unreadable label). */
+   (in the dark theme the tinted error bg and the error text are the same red). */
 .dshct-badge-guard[data-off=false][data-action=deny]{background:var(--dsw-alias-state-error-primary);color:#fff}
 .dshct-badge-guard[data-off=false][data-action=ask]{background:var(--dsw-alias-state-warn-tertiary,var(--dsw-alias-bg-layer-1));color:var(--dsw-alias-state-warn-primary,var(--dsw-alias-state-business-primary))}
 

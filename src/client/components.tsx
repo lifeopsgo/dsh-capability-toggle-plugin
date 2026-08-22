@@ -75,7 +75,7 @@ function StateGlyph(props: { readonly kind: ToggleState }): JSX.Element {
  * An unset button shows a faint dash and, on click, goes to "off" (the usual
  * intent when acting on a default-enabled capability is to disable it here).
  *
- * The button colours by stance (on=green / off=red / unset=neutral) so a row
+ * The button colours by stance (on=brand blue / off=red / unset=neutral) so a row
  * reads as one coloured dot per level. `disabled` reflects either a running
  * agent (whole panel) or a level that cannot be set here (e.g. project with no
  * root). Full keyboard/AT reach: the accessible name states the level and

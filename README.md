@@ -19,6 +19,12 @@ A composer-row control for the **DeepSeek Harness (DSH) WebUI**. While the agent
 
 Disabling something is not a cosmetic filter. A disabled capability **really disappears** from the model's tool schema set and skill catalog on the agent's next step, and a forced call is **hard-refused**.
 
+<p align="center">
+  <img alt="The capability popup: five tabs, one row per capability, three level switches each" src="./docs/screenshot.jpeg" width="900">
+</p>
+
+<p align="center"><sub>Each row carries three switches — session, project, global. Blue check = on, red cross = off, dashed dash = unset. The small badge on a set switch clears it back to unset; the right-hand badge is the resolved result.</sub></p>
+
 ## Quick start
 
 One command — install it into your DSH profile at a pinned tag:
