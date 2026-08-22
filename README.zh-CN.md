@@ -19,6 +19,38 @@
 
 关掉某项不是界面上的假过滤。被停用的能力会**在模型下一步就从工具 schema 和技能目录里真实消失**，模型若仍强行调用，会被**硬拦截**。
 
+## 快速开始
+
+一条命令装进 profile（把 `web` 换成你自己的 profile 名）：
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
+```
+
+然后重启 `dsh --profile web` 并刷新页面，输入栏就会出现能力开关按钮。
+
+`dsh plugin` 装完会自动把本插件写进 profile 的 `dsh.profile.bundles`（因为包里声明了 `dsh.bundle`），**不需要手改 package.json**。
+
+想跟随主干最新代码，把 `#v0.1.0` 换成 `#main`：
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#main
+```
+
+升级与卸载：
+
+```bash
+# 升到某个新 tag
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
+
+# 卸载（同时会从 bundles 里摘掉）
+dsh plugin --profile web remove dsh-capability-toggle-plugin
+```
+
+> 本仓库随包提交了构建产物 `lib/`，所以从 git 安装无需本地构建，也不会触发 pnpm 的 `allowBuilds` 白名单确认。
+
+本地开发用软链接：见 [安装](#安装)。
+
 ## 核心能力
 
 - **五个 tab，六个能力族** —— 技能 · MCP · 工具 · 提示词 · 安全（安全 tab 收纳审批闸门和守卫预设，两者本质是权限问题，而非能力开关）。

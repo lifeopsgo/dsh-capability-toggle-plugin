@@ -2,8 +2,16 @@
 node_modules/
 .pnpm-store/
 
-# Build output
-lib/
+# Build output.
+#
+# NOTE: lib/ is deliberately NOT ignored. This plugin is installed straight from
+# a git tag (`dsh plugin --profile <p> add github:lifeopsgo/dsh-capability-toggle-plugin#vX.Y.Z`),
+# and a git-hosted install has no build step unless pnpm is granted permission to
+# run the package's prepare script — which every user would then have to allow by
+# hash in their profile's pnpm-workspace.yaml. Shipping the built lib/ in the tag
+# keeps installation to one command with no allowBuilds entry, the same way other
+# published DSH plugins do it. Source maps stay out to keep the repo small.
+lib/*.js.map
 *.tsbuildinfo
 
 # Logs

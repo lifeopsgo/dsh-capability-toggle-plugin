@@ -19,6 +19,37 @@ A composer-row control for the **DeepSeek Harness (DSH) WebUI**. While the agent
 
 Disabling something is not a cosmetic filter. A disabled capability **really disappears** from the model's tool schema set and skill catalog on the agent's next step, and a forced call is **hard-refused**.
 
+## Quick start
+
+One command — install it into your DSH profile at a pinned tag:
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
+```
+
+Then restart the GUI and refresh the page:
+
+```bash
+dsh --profile web web
+```
+
+The control appears in the composer row, next to the ➕ button. Click it while the agent is idle.
+
+**That is it.** `dsh plugin` forwards to pnpm in the profile directory and then reconciles `dsh.profile.bundles` for you, so a package declaring `dsh.bundle` — this one does — joins the layer stack automatically. No manual `package.json` editing.
+
+Notes:
+
+- **Pin a tag.** Replace `v0.1.0` with the tag you want; see [releases](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases). Use `#main` to track the branch instead.
+- **`--profile web`** is the usual profile for the Web GUI. Substitute your own profile name if it differs.
+- **No build step needed.** The tag ships prebuilt `lib/`, so installation does not run a `prepare` script — you will not hit pnpm's build-approval prompt (`allowBuilds`) that git-hosted plugins otherwise require.
+
+To upgrade or remove:
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.2.0   # upgrade
+dsh plugin --profile web remove dsh-capability-toggle-plugin                        # remove
+```
+
 ## What it does
 
 - **Five tabs, six capability families** — `Skills` · `MCP` · `Tools` · `Prompt` · `Security` (the last folds the approval gate and the guard presets together, since both are permission concerns rather than capability toggles).
