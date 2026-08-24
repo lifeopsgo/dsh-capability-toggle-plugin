@@ -2,69 +2,49 @@
 
 # dsh-capability-toggle-plugin
 
-**Turn individual agent capabilities on and off from the DSH WebUI composer — and have it actually enforced.**
+**Control agent capabilities from the DSH WebUI — with real runtime enforcement.**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#quick-start)
 ![tests](https://img.shields.io/badge/tests-87%20passing-3fb950?style=flat-square)
+[![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
-![node](https://img.shields.io/badge/node-%E2%89%A522.6-5fa04e?style=flat-square)
 
 **English** · [简体中文](./README.zh-CN.md)
 
-<img alt="The capability popup: five tabs, one row per capability, three level switches each" src="./docs/screenshot.jpeg" width="900">
+<img alt="Capability controls for Skills, MCP, Tools, Prompt, and Security" src="./docs/screenshot.jpeg" width="900">
 
-<sub>Three switches per row — session, project, global. Blue check = on · red cross = off · dashed dash = unset.<br>The small badge on a set switch clears it; the right-hand badge is the resolved result.</sub>
+<sub>Session · Project · Global — blue check = on, red cross = off, dashed dash = unset.</sub>
 
 </div>
 
----
-
 ## What it is
 
-A composer-row control for the **DeepSeek Harness (DSH) WebUI**. While the agent is idle, open the popup and switch individual **skills, MCP servers, tools, prompt injections, the approval gate, and safety guards** on or off — independently at the **session**, **project**, or **global** level.
-
-Disabling something is not a cosmetic filter. A disabled capability **really disappears** from the model's tool schema set and skill catalog on the agent's next step, and a forced call is **hard-refused**.
-
-| | |
-| --- | --- |
-| 🎛️ **Five tabs, six families** | `Skills` · `MCP` · `Tools` · `Prompt` · `Security` |
-| 🧭 **Three levels per row** | session › project › global › default (enabled) |
-| 🔒 **Real enforcement** | removed from the schema set, not hidden in the UI |
-| ⚡ **Takes effect next step** | no session restart |
-| 🌐 **Bilingual** | zh-CN + en, follows the WebUI language |
+A **DeepSeek Harness (DSH) WebUI** plugin for controlling **skills, MCP servers, tools, prompt injections, approval escalation, and safety guards** at session, project, or global scope. Depending on the family, disabling removes, suppresses, rejects, or intercepts the capability on the agent's next step.
 
 ## Quick start
 
-Install into your DSH profile at a pinned tag — one command:
+Requires **Node.js ≥ 22.6**.
 
 ```bash
 dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
 ```
 
-Restart the GUI, then refresh the page:
+Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
 
 ```bash
 dsh --profile web web
 ```
 
-The control appears in the composer row next to the ➕ button. Click it while the agent is idle.
-
-> **That is it.** `dsh plugin` forwards to pnpm in the profile directory, then reconciles `dsh.profile.bundles` for you — a package declaring `dsh.bundle` (this one does) joins the layer stack automatically. No manual `package.json` editing.
+Open the control beside the ➕ button while the agent is idle. Replace `web` with another profile name when needed.
 
 <details>
-<summary><b>Notes &amp; other commands</b></summary>
-
-<br>
-
-- **Pin a tag** — replace `v0.1.0` with the tag you want; see [releases](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases). Use `#main` to track the branch instead.
-- **`--profile web`** is the usual profile for the Web GUI; substitute your own name if it differs.
-- **No build step** — the tag ships a prebuilt `lib/`, so installing runs no `prepare` script. You will not hit pnpm's build-approval prompt (`allowBuilds`) that git-hosted plugins otherwise require.
+<summary>Upgrade or remove</summary>
 
 ```bash
-# upgrade to another tag
+# Upgrade to another tag
 dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.2.0
 
-# remove
+# Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin
 ```
 
@@ -72,75 +52,56 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 
 ## Features
 
-### The three-level model
+### Three-level resolution
 
-Every capability exposes a `session`, `project`, and `global` switch, each either **on**, **off**, or **unset**.
+Each capability has three independent levels:
 
-```
+```text
 session  ›  project  ›  global  ›  default (enabled)
 ```
 
-The nearest level that is *set* wins; an **unset** level defers to the next one down. With all three unset, the capability stays enabled. The badge at the row's end always shows the **resolved** result across all three levels — so you never have to compute precedence in your head.
+The nearest explicit value wins. **Unset** defers to the next level; with every level unset, the capability remains enabled. The row badge always shows the resolved result.
 
-A switch shows only its current stance: click to flip **on ↔ off**, or hit the small clear badge to return it to **unset**.
+The button displays only its current state: click to toggle **on ↔ off**, or use its small clear badge to return to **unset**.
 
-### The six capability families
+### Capability families
 
-| Family | Tab | One row is | Notes |
-| :-- | :-- | :-- | :-- |
-| `skill` | Skills | One model-invocable skill | Disabling shadows it with a same-named `modelInvocable:false` skill |
-| `mcp` | MCP | One MCP **server** (`mcp__<server>__*` collapses into one switch) | Denies every tool that server exposes; the row expands to list its member tools |
-| `tool` | Tools | One model-visible tool | Also hides that tool's `tool:<name>` guidance section — saves tokens, avoids "tool gone, guidance still there" |
-| `prompt` | Prompt | One gateable system-prompt injection point | A **curated allowlist**, probed for real presence: absent injection points show no switch |
-| `approval` | Security | The approval-escalation gate (singleton) | Off ⇒ every approval request from this agent is auto-rejected. Independent of the system `/permission` setting |
-| `guard` | Security | One opt-in safety preset | **Default off.** On ⇒ the guard acts on matching calls |
+| Tab | Controls |
+| :-- | :-- |
+| **Skills** | Individual model-invocable skills |
+| **MCP** | MCP servers; expand a row to inspect member tools |
+| **Tools** | Individual model-visible tools and their guidance sections |
+| **Prompt** | A safe, presence-checked allowlist of prompt injections |
+| **Security** | Approval escalation and five opt-in safety guards |
 
-### How enforcement actually works
+### Enforcement
 
-All five seams act on the **agent's own scope**, filtering the capability surface it inherits. Nothing global is mutated, and everything is restored when the agent is released.
+Every mechanism is scoped to the current agent; global registrations are not mutated.
 
-| Family | Mechanism | Result |
-| :-- | :-- | :-- |
-| `tool` / `mcp` | `ctx.tools.restrict({ deny })` on the agent's scope | The tool leaves the model's schema set; `request/header` snapshots stop listing it; a forced call is refused |
-| `skill` | A same-named `modelInvocable:false` runtime skill shadows the real one | The skill vanishes from `<available_skills>`; the `skill` tool's `isModelInvocable` check fails and throws |
-| `prompt` | A same-named **empty-text** `systemPrompt.section` / `.context` shadow, or `suppressRuntimeContext()` | The section is overridden during assembly and dropped at render; the owning service keeps running — only what the model is *told* changes |
-| `approval` | A scoped `approval/request` listener resolving `'rejected'` | Every approval request from this agent is denied deterministically, without touching the deployment's shared policy |
-| `guard` | A `tools/pre-execute` listener matching the preset's predicate | `Block` refuses the call outright; `Confirm` raises one approval prompt and proceeds only if allowed |
+| Family | Enforcement |
+| :-- | :-- |
+| `tool` / `mcp` | Removed with `ctx.tools.restrict({ deny })`; forced calls are refused |
+| `skill` | Shadowed by a same-named `modelInvocable:false` runtime skill |
+| `prompt` | Shadowed with empty text, or suppressed with `suppressRuntimeContext()` |
+| `approval` | Scoped approval requests resolve to `rejected` |
+| `guard` | `tools/pre-execute` blocks or requests confirmation for matching calls |
 
-### Security tab
+### Security controls
 
-**Approval escalation** (default **on**) — lets this agent raise actions that need your approval. Turn it off and every approval request from this agent is auto-rejected: no prompt, no elevation. Independent of the system `/permission` setting.
+Turning off **Approval escalation** rejects every approval request from that agent without changing the system `/permission` setting.
 
-**Guard presets** (default **off**, opt-in). A guard reads inverted from the other families: *on* means **protection is active**, so its badge reads *Guarding* when it is doing something.
+Safety guards are opt-in:
 
-| Guard | Action | Catches |
-| :-- | :-- | :-- |
-| Read-only mode | 🚫 Block | Every file write / create / edit — the agent can read but not change files |
-| Protect secrets | 🚫 Block | Any read, write, or shell command touching `.env`, `*.pem`, `id_rsa`, credentials, `.ssh/` |
-| Confirm dangerous shell | ⚠️ Confirm | `rm -rf`, `dd`, `mkfs`, `chmod 777`, `curl \| sh`, fork bombs |
-| Confirm destructive git | ⚠️ Confirm | `push --force`, `reset --hard`, `clean -fd`, `branch -D` |
-| Confirm outbound network | ⚠️ Confirm | `web_search`, `read_page`, `curl`/`wget`, `git push`, `npm publish` |
+| Guard | Action |
+| :-- | :-- |
+| Read-only mode | Block file writes, creates, and edits |
+| Protect secrets | Block access to common secret files and credentials |
+| Dangerous shell | Confirm high-risk shell commands |
+| Destructive git | Confirm history- or work-losing git commands |
+| Outbound network | Confirm network tools and outbound shell actions |
 
-`Block` guards are evaluated before `Confirm` guards, so a blocking rule always wins over a confirmation prompt.
-
-### Prompt tab
-
-The system-prompt registry exposes many entries, but most are unsafe to blank. This plugin gates only a curated few, and probes the live assembly so a switch appears **only when your deployment actually registered that entry**:
-
-- **`deployment:persona`** — the order-0 persona section; empty text is a documented first-class state.
-- **`sandbox:policy` / `approval:policy`** — the runtime-context snapshots that *tell the model* the sandbox mode and approval policy. Gating changes only what the model is told; the owning services still enforce for real.
-- **Hide all runtime context** — one coarse switch for this scope.
-
-Deliberately **excluded**, because blanking them breaks the model or the render: `harness:identity` (identity foundation), `tools:code-only` / `tools:sdk` (critical to the code-mode protocol), and the strict interpolation variables `provider` / `model` / `cwd`.
-
-### Behaviour details
-
-- **Locked while running** — every switch is read-only while the agent works (`session.running`); toggles apply when it goes idle.
-- **Survives popup close and turn boundaries** — state lives in a settings namespace and the Host caches the last-known inventory, so reopening the popup between turns still shows disabled state correctly.
-- **Framework-contract self-check** — the seams this plugin binds to are asserted at activation and printed as one greppable banner line. If a host event is ever renamed, enforcement would **fail open** and silently stop — the most dangerous direction — so it is made observable.
+Additional behavior: switches lock while the agent runs, state survives popup close and turn boundaries, and the UI follows the WebUI language.
 
 ---
 
-<div align="center">
-<sub>MIT — see <a href="./LICENSE">LICENSE</a></sub>
-</div>
+<div align="center"><sub>MIT — see <a href="./LICENSE">LICENSE</a></sub></div>
