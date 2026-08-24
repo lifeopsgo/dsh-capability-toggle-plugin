@@ -1,0 +1,44 @@
+name: Feature request
+description: Propose an improvement to capability controls or enforcement
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What limitation or workflow problem should be solved?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the user-visible behavior and expected enforcement semantics.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Skills
+        - MCP servers
+        - Tools
+        - Prompt injections
+        - Approval gate
+        - Safety guards
+        - Web UI
+        - Installation or packaging
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Mockups and sanitized examples are welcome.
