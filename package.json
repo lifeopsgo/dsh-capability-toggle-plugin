@@ -2,7 +2,22 @@
   "name": "dsh-capability-toggle-plugin",
   "version": "0.1.0",
   "private": true,
-  "description": "DSH WebUI 能力开关：对话输入栏一个开关按钮，弹窗按 Skills/MCPs/Tools/Prompt 四 tab 列出每项，逐条三级（会话/项目/全局）开关，禁用项从模型 prompt 自动消失并有 pre-execute 硬拦截。",
+  "description": "DSH WebUI capability controls for skills, MCP servers, tools, prompt injections, approvals, and safety guards at session, project, and global levels.",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "capability",
+    "security"
+  ],
+  "homepage": "https://github.com/lifeopsgo/dsh-capability-toggle-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/lifeopsgo/dsh-capability-toggle-plugin/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lifeopsgo/dsh-capability-toggle-plugin.git"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -20,7 +35,9 @@
     "src",
     "cordis.patch.yml",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "README.zh-CN.md",
+    "docs/screenshot.jpeg"
   ],
   "scripts": {
     "build": "tsdown",
