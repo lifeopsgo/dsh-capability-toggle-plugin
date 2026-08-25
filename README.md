@@ -26,7 +26,7 @@ A **DeepSeek Harness (DSH) WebUI** plugin for controlling **skills, MCP servers,
 Requires **Node.js ≥ 22.6**.
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.0
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
