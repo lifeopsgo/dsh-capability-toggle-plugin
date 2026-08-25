@@ -26,7 +26,7 @@
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.0
 dsh --profile web web
 ```
 
