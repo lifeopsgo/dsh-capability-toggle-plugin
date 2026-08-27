@@ -24,6 +24,7 @@ import { applyPromptGates, collectPromptGates } from '../src/host/prompt.ts'
 import { APPROVAL_GATE_ID, applyApprovalGate, collectApprovalGate } from '../src/host/approval.ts'
 import { writeMap } from '../src/host/store.ts'
 import { parseSetBody } from '../src/host/http.ts'
+import { SCOPE_IDENTITY_DRIFT_KEY, scopeIdentityDrift } from '../src/host/self-check.ts'
 import type { LayeredOverrides, CapabilityDescriptor } from '../src/shared/types.ts'
 
 /** Build a LayeredOverrides from partial per-level maps. */
@@ -996,4 +997,41 @@ test('fallback contract: a session-off read back after the agent is gone still r
   delete stored['tool:bash']
   const cleared = buildProjection(snapshot, fakeLayered(), '/proj')
   assert.equal(cleared.rows.find(r => r.id === 'tool:bash')?.disabled, false)
+})
+
+// --- scope identity: the duplicate-framework-copy regression.
+//
+// dsh-agent-loop mints a scope for EVERY agent (its Agent constructor calls
+// `createScope(loopCtx, this)` unconditionally), so `scopeOf(agent.ctx)`
+// returning undefined never means "this agent is legitimately scopeless". It
+// means the read went through a SECOND copy of @deepseek-ai/dsh-scope: that
+// module keys identity on a module-private `Symbol("dsh.scope")` plus private
+// WeakMaps, so a carrier minted by the host copy is invisible to a duplicate
+// copy. Enforcement then degrades to the global layer alone — measured symptom:
+// the skills tab lists only globally registered skills (one row) while tools,
+// MCP groups and guards still look correct, which is why it reads as "a few
+// skills went missing" rather than as a framework fault.
+
+// AgentBinding itself is not imported here: it declares constructor parameter
+// properties, which Node's strip-only type stripping rejects, so this suite can
+// only exercise the pure decision function. The binding's use of it is asserted
+// against the BUILT artifact in scope-identity-wiring.test.ts.
+
+test('scopeIdentityDrift stays silent for a real scope key', () => {
+  // ScopeKey is `object` — dsh-agent-loop passes the Agent instance itself.
+  assert.equal(scopeIdentityDrift({}), null)
+})
+
+test('scopeIdentityDrift alarms when the scope key is missing', () => {
+  const message = scopeIdentityDrift(undefined)
+  assert.notEqual(message, null)
+  // The message must name the real cause and the actionable fix.
+  assert.match(String(message), /dsh-scope/)
+  assert.match(String(message), /peerDependency/)
+})
+
+test('the scope-identity drift key is stable and namespaced', () => {
+  // The key dedupes the warn-once sink; changing it silently would re-enable
+  // log flooding, so it is pinned here.
+  assert.equal(SCOPE_IDENTITY_DRIFT_KEY, 'scope.identity')
 })

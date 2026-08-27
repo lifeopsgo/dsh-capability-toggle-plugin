@@ -22,6 +22,21 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { ScopeKey } from '@deepseek-ai/dsh-scope'
+
+export const SCOPE_IDENTITY_DRIFT_KEY = 'scope.identity'
+
+export function scopeIdentityDrift(scopeKey: ScopeKey | undefined): string | null {
+  if (scopeKey !== undefined) return null
+  return 'capability-toggle: this agent carries no dsh-scope tag, so per-agent enforcement is '
+    + 'inoperative and the panel can only list globally registered capabilities (the skills tab '
+    + 'collapses to global skills while tools, MCP groups and guards still look correct). '
+    + 'dsh-agent-loop mints a scope for every agent, so a missing tag means the read went through '
+    + 'a SECOND copy of @deepseek-ai/dsh-scope: scope identity is a module-private Symbol plus '
+    + 'private WeakMaps, which a duplicate copy cannot read. Make the framework packages resolve '
+    + "to the host's copy — declare every @deepseek-ai/* package as a peerDependency and keep a "
+    + "second copy out of this plugin's own node_modules."
+}
 
 /**
  * The framework contract this plugin depends on, in one place. Kept as data (not

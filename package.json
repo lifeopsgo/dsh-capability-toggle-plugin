@@ -41,6 +41,7 @@
   ],
   "scripts": {
     "build": "tsdown",
+    "link-host-framework": "node scripts/link-host-framework.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "node --test --experimental-strip-types \"test/**/*.test.ts\""
   },

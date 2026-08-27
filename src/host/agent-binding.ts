@@ -45,6 +45,7 @@ import {
 import { applyPromptGates } from './prompt.ts'
 import { applyApprovalGate } from './approval.ts'
 import { applyGuards, GUARD_IDS } from './guards.ts'
+import { SCOPE_IDENTITY_DRIFT_KEY, scopeIdentityDrift } from './self-check.ts'
 import type { OverrideStore } from './store.ts'
 
 /**
@@ -127,6 +128,8 @@ export class AgentBinding {
     this.scopeKey = scopeOf(agent.ctx)
     this.projectKey = projectKeyOf(agent)
     this.sessionKey = agent.session.id
+    const scopeDrift = scopeIdentityDrift(this.scopeKey)
+    if (scopeDrift !== null) onDrift?.(SCOPE_IDENTITY_DRIFT_KEY, scopeDrift)
     this.scope = this.scopeKey === undefined ? undefined : createScope(hostCtx, this.scopeKey)
     this.scopedCtx = this.scope?.ctx ?? hostCtx
   }
