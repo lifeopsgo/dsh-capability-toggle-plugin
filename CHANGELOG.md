@@ -4,6 +4,75 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.0.2] - 2026-08-27
+
+### Fixed
+
+- `package.json` reported `0.1.0` on every release up to and including `v1.0.1`. The
+  installed version is user-visible through the plugin market's update view, which reads
+  the manifest in the profile's `node_modules`, so the reported version now matches the
+  tag. No runtime code changed; the built bundles never embedded the version string.
+
+### Changed
+
+- README install commands reference `v1.0.2`.
+- `CHANGELOG.md` documents the `1.0.0` and `1.0.1` releases, which were tagged without
+  entries.
+
+### Install
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.2
+```
+
+## [1.0.1] - 2026-08-27
+
+### Fixed
+
+- Silent enforcement degradation is now detectable. When the plugin reads an agent context
+  through a *duplicate* copy of `@deepseek-ai/dsh-scope`, `scopeOf()` returns `undefined`:
+  per-agent enforcement stops applying and the panel's skills tab collapses to globally
+  registered skills only, with no error anywhere. That failure is now reported through the
+  existing warn-once drift channel, naming both the cause and the fix. `dsh-agent-loop`
+  mints a scope for every agent, so a missing scope tag is always a duplicate-copy fault
+  and never a legitimate state.
+
+### Added
+
+- `pnpm run link-host-framework`, an idempotent maintenance script that re-points
+  `node_modules/@deepseek-ai/*` at the running host's copy. `--check` reports without
+  writing, for use in a local gate or pre-commit hook.
+- `CONTRIBUTING.md` documents when the script is required: after any install in a checkout
+  a DSH profile consumes through `link:`, because a profile `link:` is resolved by realpath
+  and the plugin would otherwise load its own second copy of the framework.
+
+### Notes
+
+- Enforcement behavior is unchanged and no per-call cost is added. Installs made with
+  `dsh plugin add` were never affected by the underlying fault: DSH pins
+  `autoInstallPeers: false` for every profile and `pnpm add` skips a plugin's
+  `devDependencies`, so no duplicate framework copy is created. The fault reproduces only
+  in a checkout linked into a live profile.
+
+## [1.0.0] - 2026-08-25
+
+Repository and toolchain maturity only. No runtime code changed relative to `0.1.0`; the
+Host and client bundles are byte-identical.
+
+### Added
+
+- CI workflow running install, typecheck, tests, and build on push and pull request.
+- Framework packages declared as `peerDependencies` so they resolve to the running host's
+  copy, with matching `devDependencies` so a clean checkout can typecheck.
+- Contribution, security, support, and code-of-conduct guides; issue forms and a pull
+  request template; Dependabot configuration; editor configuration.
+
+### Changed
+
+- Toolchain versions: `pnpm/action-setup` 4 to 6, `actions/checkout` 4 to 7,
+  `actions/setup-node` 4 to 7, TypeScript 5.9.3 to 7.0.2.
+- Both READMEs condensed to introduction, quick start, and features.
+
 ## [0.1.0] - 2026-08-22
 
 ### Added
@@ -23,4 +92,7 @@ The project follows [Semantic Versioning](https://semver.org/).
 dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
 ```
 
+[1.0.2]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.2
+[1.0.1]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.1
+[1.0.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.0
 [0.1.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v0.1.0
