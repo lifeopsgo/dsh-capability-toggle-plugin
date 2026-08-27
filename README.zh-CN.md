@@ -36,8 +36,8 @@ dsh --profile web web
 <summary>升级或卸载</summary>
 
 ```bash
-# 升级到其他 tag
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.2.0
+# 升级或降级：tag 换成 releases 页面上的任意版本
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.2
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin
