@@ -41,8 +41,8 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 <summary>Upgrade or remove</summary>
 
 ```bash
-# Upgrade to another tag
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.2.0
+# Upgrade or downgrade: use any tag listed on the releases page
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.2
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin
