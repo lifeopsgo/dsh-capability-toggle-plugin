@@ -97,6 +97,14 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 
 其他行为：agent 运行时锁定开关；关闭弹窗或跨轮次后状态仍保留；界面语言跟随 WebUI。
 
+## 规划
+
+以下为规划中、尚未实现：
+
+- **跨项目同步配置** — 从其他项目复制或引用项目级配置，无需逐个项目重新配置。
+- **筛选与全选** — 在某个 tab 内按条件筛选行，并一次性全选筛选结果。
+- **筛选全选后批量操作** — 对筛选 + 全选选中的所有行一次性执行启用/停用/取消设置等批量操作。
+
 ---
 
 <div align="center"><sub>MIT，见 <a href="./LICENSE">LICENSE</a></sub></div>
