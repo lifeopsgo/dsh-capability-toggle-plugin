@@ -853,7 +853,7 @@ test('collectInventory alarms and yields empty when skills.snapshot has no array
     { schemas: () => [] },
     { snapshot: () => Promise.resolve({}) }, // no `skills` array
   ).ctx
-  const rows = await collectInventory(ctx, undefined, key => drifts.push(key))
+  const rows = await collectInventory(ctx, undefined, undefined, key => drifts.push(key))
   assert.ok(drifts.includes('skills.snapshot.shape'))
   assert.equal(rows.filter(r => r.kind === 'skill').length, 0)
 })
@@ -865,7 +865,7 @@ test('collectInventory alarms and yields empty tools when schemas() is not itera
     { schemas: () => ({}) }, // not iterable
     { snapshot: () => Promise.resolve({ skills: [] }) },
   ).ctx
-  const rows = await collectInventory(ctx, undefined, key => drifts.push(key))
+  const rows = await collectInventory(ctx, undefined, undefined, key => drifts.push(key))
   assert.ok(drifts.includes('tools.schemas.shape'))
   assert.equal(rows.filter(r => r.kind === 'tool' || r.kind === 'mcp').length, 0)
 })
@@ -877,10 +877,67 @@ test('collectInventory skips a malformed schema.name entry without throwing', as
     { schemas: () => [{ name: 'ok' }, { name: 123 }, { name: 'web_search' }] },
     { snapshot: () => Promise.resolve({ skills: [] }) },
   ).ctx
-  const rows = await collectInventory(ctx, undefined, key => drifts.push(key))
+  const rows = await collectInventory(ctx, undefined, undefined, key => drifts.push(key))
   const toolNames = rows.filter(r => r.kind === 'tool').map(r => r.name).sort()
   assert.deepEqual(toolNames, ['ok', 'web_search'])
   assert.ok(drifts.includes('tools.schemas.name'))
+})
+
+test('collectInventory forwards cwd to skills.snapshot so project-level skill roots are discovered', async () => {
+  // dsh-skill-filesystem only adds <projectRoot>/.dsh/skills and
+  // <projectRoot>/.agents/skills to its scan roots when snapshot() is called
+  // WITH a cwd (see dsh-skill-filesystem's `roots(cwd)`); omitting cwd silently
+  // drops every project-level skill from the panel while the model-facing
+  // catalog (which does pass session.header.cwd) still sees them. This pins
+  // that cwd forwarding so the two views cannot drift again.
+  let receivedOptions: unknown
+  const ctx = fakeCtx(
+    new Set(),
+    { schemas: () => [] },
+    { snapshot: (options: unknown) => { receivedOptions = options; return Promise.resolve({ skills: [] }) } },
+  ).ctx
+  await collectInventory(ctx, undefined, '/Users/wongtp/Downloads', () => {})
+  assert.deepEqual(receivedOptions, { cwd: '/Users/wongtp/Downloads' })
+})
+
+test('collectInventory omits cwd from skills.snapshot when none is given', async () => {
+  let receivedOptions: unknown
+  const ctx = fakeCtx(
+    new Set(),
+    { schemas: () => [] },
+    { snapshot: (options: unknown) => { receivedOptions = options; return Promise.resolve({ skills: [] }) } },
+  ).ctx
+  await collectInventory(ctx, undefined, undefined, () => {})
+  assert.deepEqual(receivedOptions, {})
+})
+
+test('collectInventory omits cwd from skills.snapshot when cwd is the empty string', async () => {
+  // agent-binding.ts's projectKeyOf falls back to `''` when
+  // `agent.session.header.cwd` is unset, and that same value is what would
+  // reach collectInventory as `cwd` for a cwd-less agent. `''` is not a real
+  // project root, so it must be filtered out exactly like `undefined` rather
+  // than forwarded as `{ cwd: '' }`, which would make dsh-skill-filesystem
+  // treat the process's actual cwd as a project root.
+  let receivedOptions: unknown
+  const ctx = fakeCtx(
+    new Set(),
+    { schemas: () => [] },
+    { snapshot: (options: unknown) => { receivedOptions = options; return Promise.resolve({ skills: [] }) } },
+  ).ctx
+  await collectInventory(ctx, undefined, '', () => {})
+  assert.deepEqual(receivedOptions, {})
+})
+
+test('collectInventory forwards both scope and cwd to skills.snapshot when both are present', async () => {
+  let receivedOptions: unknown
+  const scopeKey = {} as Parameters<typeof collectInventory>[1]
+  const ctx = fakeCtx(
+    new Set(),
+    { schemas: () => [] },
+    { snapshot: (options: unknown) => { receivedOptions = options; return Promise.resolve({ skills: [] }) } },
+  ).ctx
+  await collectInventory(ctx, scopeKey, '/repo', () => {})
+  assert.deepEqual(receivedOptions, { scope: scopeKey, cwd: '/repo' })
 })
 
 // --- buildProjection: the pure core the no-live-agent fallback read relies on.

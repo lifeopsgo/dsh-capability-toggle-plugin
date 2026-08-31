@@ -5,7 +5,7 @@
 **Control agent capabilities from the DSH WebUI — with real runtime enforcement.**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#quick-start)
-![tests](https://img.shields.io/badge/tests-94%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-97%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -68,7 +68,7 @@ The button displays only its current state: click to toggle **on ↔ off**, or u
 
 | Tab | Controls |
 | :-- | :-- |
-| **Skills** | Individual model-invocable skills |
+| **Skills** | Individual model-invocable skills, including project-level skills discovered from the session's workspace (`.dsh/skills`, `.agents/skills`) |
 | **MCP** | MCP servers; expand a row to inspect member tools |
 | **Tools** | Individual model-visible tools and their guidance sections |
 | **Prompt** | A safe, presence-checked allowlist of prompt injections |

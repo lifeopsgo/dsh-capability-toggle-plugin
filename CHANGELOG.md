@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.0.3] - 2026-08-31
+
+### Fixed
+
+- Project-level skills were silently missing from the Skills tab. `collectInventory` called
+  `ctx.skills.snapshot()` without the agent's session `cwd`, so `dsh-skill-filesystem` never
+  scanned `<projectRoot>/.dsh/skills` or `<projectRoot>/.agents/skills` — only user (`~/.agents`)
+  and bundled skills showed up. The model-facing skill catalog (`dsh-tool-skill`) already reads
+  `session.header.cwd`, so a project skill the model could see and load was invisible on this
+  panel and could never be switched off. `collectInventory` and `AgentBinding.pristineInventory`
+  now forward the session `cwd`, matching the model-facing catalog.
+
+### Install
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.3
+```
+
 ## [1.0.2] - 2026-08-27
 
 ### Fixed
@@ -92,6 +110,7 @@ Host and client bundles are byte-identical.
 dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
 ```
 
+[1.0.3]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.3
 [1.0.2]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.2
 [1.0.1]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.1
 [1.0.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.0
