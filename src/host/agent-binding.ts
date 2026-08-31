@@ -165,7 +165,7 @@ export class AgentBinding {
    * tools and `skills.snapshot` returns shadow stubs.
    */
   private async pristineInventory(): Promise<CapabilityDescriptor[]> {
-    return collectInventory(this.scopedCtx, this.scopeKey, this.onDrift)
+    return collectInventory(this.scopedCtx, this.scopeKey, this.agent.session.header.cwd, this.onDrift)
   }
 
   /**
