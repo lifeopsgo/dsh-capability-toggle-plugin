@@ -5,7 +5,7 @@
 **在 DSH WebUI 中控制 agent 能力，并在运行时真正强制执行。**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#快速开始)
-![tests](https://img.shields.io/badge/tests-94%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-97%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -63,7 +63,7 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 
 | Tab | 控制内容 |
 | :-- | :-- |
-| **技能** | 单个模型可调用技能 |
+| **技能** | 单个模型可调用技能，包含从会话工作区发现的项目级技能（`.dsh/skills`、`.agents/skills`） |
 | **MCP** | MCP 服务器；展开行可查看成员工具 |
 | **工具** | 单个模型可见工具及其指导段 |
 | **提示词** | 经过安全筛选并探测实际存在性的提示词注入项 |
