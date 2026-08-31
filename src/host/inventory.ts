@@ -62,6 +62,9 @@ export type DriftSink = (key: string, message: string) => void
  * registers nothing and mutates no state.
  * @param ctx - a context that can read `skills` and `tools`.
  * @param scope - the agent scope key to view, or undefined for the global view.
+ * @param cwd - the agent's session cwd, so project-level skill roots
+ *   (`<projectRoot>/.dsh/skills`, `<projectRoot>/.agents/skills`) are
+ *   discovered; omitted (or `''`) yields only the user/bundled roots.
  * @param onDrift - optional warn-once sink for unexpected framework shapes.
  * @returns descriptors in tab order (skills, then mcps, then tools), each tab
  *   sorted by name.
@@ -69,9 +72,10 @@ export type DriftSink = (key: string, message: string) => void
 export async function collectInventory(
   ctx: Context,
   scope: ScopeKey | undefined,
+  cwd?: string,
   onDrift?: DriftSink,
 ): Promise<CapabilityDescriptor[]> {
-  const skills = await collectSkills(ctx, scope, onDrift)
+  const skills = await collectSkills(ctx, scope, cwd, onDrift)
   const { mcps, tools } = collectTools(ctx, scope, onDrift)
   const prompts = await collectPromptGates(ctx, scope)
   const approval = collectApprovalGate(ctx)
@@ -83,9 +87,13 @@ export async function collectInventory(
 async function collectSkills(
   ctx: Context,
   scope: ScopeKey | undefined,
+  cwd: string | undefined,
   onDrift?: DriftSink,
 ): Promise<CapabilityDescriptor[]> {
-  const snapshot = await ctx.skills.snapshot(scope === undefined ? {} : { scope })
+  const options: { scope?: ScopeKey, cwd?: string } = {}
+  if (scope !== undefined) options.scope = scope
+  if (cwd !== undefined && cwd !== '') options.cwd = cwd
+  const snapshot = await ctx.skills.snapshot(options)
   // Contract: `snapshot.skills` is an array of summaries. If an upgrade changes
   // that shape, treat it as "no skills" (safe: nothing to switch) but alarm, so
   // an empty skills tab reads as a drift signal rather than a silent blank.
