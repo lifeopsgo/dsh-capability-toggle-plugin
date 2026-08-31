@@ -26,7 +26,7 @@
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.2
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.3
 dsh --profile web web
 ```
 
@@ -37,7 +37,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.2
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.3
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin
