@@ -67,6 +67,37 @@ const CSS = `
 /* column header row: capability | session · project · global · result */
 .dshct-colhead{flex:none;display:grid;grid-template-columns:1fr ${LEVELS_COLS};align-items:center;gap:0 10px;padding:7px 15px 6px;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .dshct-colhead>span{font-size:11.5px;line-height:1;letter-spacing:.02em;color:var(--dsw-alias-label-secondary);font-weight:600;text-align:center}
+/* the capability column header doubles as the search toggle's home: the glyph
+   sits left of the label instead of the label alone being centered. */
+.dshct-col-cap{display:flex;align-items:center;justify-content:center;gap:5px}
+.dshct-search-toggle{flex:none;display:flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;transition:background .14s ease,color .14s ease}
+.dshct-search-toggle svg{font-size:12px}
+.dshct-search-toggle:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+.dshct-search-toggle[data-open=true]{color:var(--dsw-alias-state-business-primary)}
+.dshct-search-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
+
+/* search + bulk-action toolbar: same column grid as the header/rows so the
+   per-level bulk trios land squarely under their level's header label. */
+.dshct-toolbar{flex:none;display:grid;grid-template-columns:1fr ${LEVELS_COLS};align-items:center;gap:0 10px;padding:6px 15px;background:var(--dsw-alias-bg-layer-1);border-bottom:1px solid var(--dsw-alias-border-l1)}
+.dshct-search-input{min-width:0;width:100%;height:26px;box-sizing:border-box;padding:0 9px;border:1px solid var(--dsw-alias-border-l1);border-radius:7px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px}
+.dshct-search-input::placeholder{color:var(--dsw-alias-label-caption)}
+.dshct-search-input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
+.dshct-search-input:disabled{opacity:.5;cursor:default}
+.dshct-bulk{position:relative;justify-self:center;display:inline-flex}
+.dshct-bulk-btn{display:flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-tertiary);cursor:pointer;transition:background .14s ease,color .14s ease}
+.dshct-bulk-btn svg{font-size:14px}
+.dshct-bulk-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+.dshct-bulk-btn[data-open=true]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-state-business-primary)}
+.dshct-bulk-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
+.dshct-bulk-btn:disabled{cursor:default;opacity:.4}
+.dshct-bulk-menu{position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);z-index:10;min-width:104px;box-sizing:border-box;padding:4px;display:flex;flex-direction:column;gap:1px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-base);box-shadow:var(--dsw-shadow-lv2,var(--dsw-shadow-lv3))}
+.dshct-bulk-item{display:flex;align-items:center;gap:7px;height:28px;box-sizing:border-box;padding:0 9px;border:0;border-radius:5px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;white-space:nowrap;cursor:pointer;transition:background .12s ease,color .12s ease}
+.dshct-bulk-item svg{flex:none;font-size:12px}
+.dshct-bulk-item:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dshct-bulk-item:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
+.dshct-bulk-item[data-kind=on]{color:var(--dsw-alias-state-business-primary)}
+.dshct-bulk-item[data-kind=off]{color:var(--dsw-alias-state-error-primary)}
+.dshct-bulk-item[data-kind=inherit]{color:var(--dsw-alias-label-secondary)}
 
 /* list — the only scrolling region; fills the fixed remaining height */
 .dshct-list{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:2px 0;overscroll-behavior:contain}
@@ -169,8 +200,9 @@ const CSS = `
    breathing room; both the column header and the row grid share LEVELS_COLS, so
    override both together to stay aligned. */
 @media (max-width:440px){
-  .dshct-colhead,.dshct-row-top{grid-template-columns:1fr repeat(3,40px) 42px;gap:0 6px}
+  .dshct-colhead,.dshct-row-top,.dshct-toolbar{grid-template-columns:1fr repeat(3,40px) 42px;gap:0 6px}
   .dshct-colhead{padding-left:12px;padding-right:12px}
+  .dshct-toolbar{padding-left:12px;padding-right:12px}
   .dshct-row{padding-left:12px;padding-right:12px}
   .dshct-header{padding-left:12px;padding-right:12px}
   .dshct-note,.dshct-running{padding-left:12px;padding-right:12px}

@@ -26,7 +26,7 @@ import type { CSSProperties } from 'react'
 import type {
   CapabilityToggleProjection, ToggleLevel, ToggleState,
 } from '../shared/types.ts'
-import { fetchState, writeState } from './api.ts'
+import { fetchState, writeState, writeStateMany } from './api.ts'
 import { Panel } from './components.tsx'
 import { NS, dictionaries } from './locales.ts'
 import { injectStyles } from './styles.ts'
@@ -127,6 +127,21 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
     })
   }, [sessionId, refresh])
 
+  // The toolbar's bulk action: same one-token-per-write / FIFO-chain discipline
+  // as onSet, just posting the batched /set-many route instead of N single
+  // writes. Sharing writeChainRef with onSet keeps a bulk action and an
+  // in-flight single toggle from racing each other server-side.
+  const onSetMany = useCallback((level: ToggleLevel, ids: readonly string[], next: ToggleState) => {
+    const seq = ++writeSeqRef.current
+    readSeqRef.current++
+    writeChainRef.current = writeChainRef.current.then(async () => {
+      const updated = await writeStateMany({ session: sessionId, level, ids, state: next })
+      if (!aliveRef.current || seq !== writeSeqRef.current) return
+      if (updated !== null) setProjection(updated)
+      else void refresh()
+    })
+  }, [sessionId, refresh])
+
   return (
     <div className="dshct-wrap" ref={wrapRef}>
       <button
@@ -157,7 +172,15 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
               ? <div className="dshct-panel dshct-panel-loading">{t('loading')}</div>
               : projection === null
                 ? <div className="dshct-panel dshct-panel-loading">{t('unavailable')}</div>
-                : <Panel projection={projection} disabled={running} t={t} onSet={onSet} />}
+                : (
+                  <Panel
+                    projection={projection}
+                    disabled={running}
+                    t={t}
+                    onSet={onSet}
+                    onSetMany={onSetMany}
+                  />
+                )}
           </div>
         )
         : null}

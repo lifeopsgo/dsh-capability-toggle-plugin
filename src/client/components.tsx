@@ -7,7 +7,7 @@
  * @module dsh-capability-toggle-plugin/client/components
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type {
   CapabilityKind, CapabilityRow, CapabilityToggleProjection, ToggleLevel, ToggleState,
@@ -128,6 +128,93 @@ function LevelSwitch(props: {
 }
 
 /**
+ * The bulk-action dropdown for one level column in the search toolbar: a
+ * single 24×24 trigger that opens a three-item menu (enable all / disable all
+ * / clear all), reusing the same ✓/✕/– glyph language as {@link LevelSwitch}'s
+ * stances so a column reads as one control whether it is acting on a single
+ * row or on every currently visible one. One 24×24 target replaces the old
+ * 9-button grid whose 15×20 members fell below the WCAG 2.5.8 target-size
+ * floor; the actions move into a menu whose 28px rows are comfortably
+ * reachable. `open`/`onOpenChange` are owned by the Panel so at most one
+ * menu is ever expanded (opening B closes A). `disabled` covers the
+ * running-agent lock, a project column with no project root, AND an empty
+ * visible set (nothing to act on) — the caller folds all three into one flag
+ * since the button has no other state to show.
+ */
+function BulkActions(props: {
+  readonly level: ToggleLevel
+  readonly open: boolean
+  readonly onOpenChange: (open: boolean) => void
+  readonly disabled: boolean
+  readonly t: Translate
+  readonly onPick: (next: ToggleState) => void
+}): JSX.Element {
+  const { level, open, onOpenChange, disabled, t, onPick } = props
+  const rootRef = useRef<HTMLDivElement>(null)
+  const levelName = t(`level.${level}`)
+  const actions: readonly ToggleState[] = ['on', 'off', 'inherit']
+  useEffect(() => {
+    if (!open) return
+    const onDocPointerDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) onOpenChange(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // The Panel's own outside-close also listens for Escape on document;
+        // swallowing here (capture runs first) keeps one press closing only
+        // the menu, not the whole panel underneath it.
+        e.stopPropagation()
+        onOpenChange(false)
+      }
+    }
+    document.addEventListener('pointerdown', onDocPointerDown, true)
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      document.removeEventListener('pointerdown', onDocPointerDown, true)
+      document.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [open, onOpenChange])
+  return (
+    <div className="dshct-bulk" ref={rootRef}>
+      <button
+        type="button"
+        className="dshct-bulk-btn"
+        data-open={open}
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${levelName} · ${t('bulk.menu')}`}
+        title={`${levelName} · ${t('bulk.menu')}`}
+        onClick={() => onOpenChange(!open)}
+      >
+        <svg width="1em" height="1em" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M3 5h10M3 8h10M3 11h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open
+        ? (
+            <div className="dshct-bulk-menu" role="menu" aria-label={`${levelName} · ${t('bulk.menu')}`}>
+              {actions.map(state => (
+                <button
+                  key={state}
+                  type="button"
+                  role="menuitem"
+                  className="dshct-bulk-item"
+                  data-kind={state}
+                  onClick={() => { onOpenChange(false); onPick(state) }}
+                >
+                  <StateGlyph kind={state} />
+                  <span>{t(`bulk.${state}`)}</span>
+                </button>
+              ))}
+            </div>
+          )
+        : null}
+    </div>
+  )
+}
+
+/**
  * One capability row, laid out as two lines against the shared column grid:
  * line 1 is the name (with a status dot) plus the three level segments and the
  * result badge, each aligned under its column header; line 2 is the full-width
@@ -141,6 +228,22 @@ function LevelSwitch(props: {
  * `projectDisabled` greys the project segment when the session has no project
  * root to write under; the whole row's controls are also disabled while busy.
  */
+/**
+ * Resolve one row's displayed name and description. Prompt rows carry an i18n
+ * key suffix in `name` and the registry name in `description`; the approval
+ * singleton uses fixed i18n strings; the guard family looks up its name/desc
+ * by row name; every other kind carries its own display strings verbatim.
+ * Shared by {@link Row} (rendering) and {@link Panel} (search filtering), so
+ * a search matches what the user actually reads on screen, not a raw id the
+ * UI never shows for these three kinds.
+ */
+function rowDisplayText(row: CapabilityRow, t: Translate): { name: string; desc: string } {
+  if (row.kind === 'prompt') return { name: t(`prompt.${row.name}.name`), desc: t(`prompt.${row.name}.desc`) }
+  if (row.kind === 'approval') return { name: t('approval.name'), desc: t('approval.desc') }
+  if (row.kind === 'guard') return { name: t(`guard.${row.name}.name`), desc: t(`guard.${row.name}.desc`) }
+  return { name: row.name, desc: row.description }
+}
+
 function Row(props: {
   readonly row: CapabilityRow
   readonly disabled: boolean
@@ -150,17 +253,7 @@ function Row(props: {
 }): JSX.Element {
   const { row, disabled, projectDisabled, t } = props
   const [expanded, setExpanded] = useState(false)
-  // Prompt rows carry an i18n key suffix in `name` and the registry name in
-  // `description`; the approval singleton uses fixed i18n strings; every other
-  // kind carries its own display strings verbatim.
-  const displayName = row.kind === 'prompt'
-    ? t(`prompt.${row.name}.name`)
-    : row.kind === 'approval' ? t('approval.name')
-      : row.kind === 'guard' ? t(`guard.${row.name}.name`) : row.name
-  const displayDesc = row.kind === 'prompt'
-    ? t(`prompt.${row.name}.desc`)
-    : row.kind === 'approval' ? t('approval.desc')
-      : row.kind === 'guard' ? t(`guard.${row.name}.desc`) : row.description
+  const { name: displayName, desc: displayDesc } = rowDisplayText(row, t)
   const members = row.memberTools ?? []
   const expandable = row.kind === 'mcp' && members.length > 0
   // A guard row reuses `disabled` to mean ACTIVE (opt-in default off). Its
@@ -269,19 +362,43 @@ function Row(props: {
   )
 }
 
+/**
+ * A filtered row's plain-text haystack for the search box: the resolved
+ * display name and description, lower-cased once per row per render. Search
+ * matches against what the user actually SEES (translated strings), not the
+ * wire `id`/`name`, so typing a guard's shown label finds it even though its
+ * `row.name` is the untranslated preset key.
+ */
+function rowHaystack(row: CapabilityRow, t: Translate): string {
+  const { name, desc } = rowDisplayText(row, t)
+  return `${name} ${desc}`.toLowerCase()
+}
+
 /** The popup body: tab strip plus the active tab's row list. */
 export function Panel(props: {
   readonly projection: CapabilityToggleProjection
   readonly disabled: boolean
   readonly t: Translate
   readonly onSet: (level: ToggleLevel, id: string, next: ToggleState) => void
+  readonly onSetMany: (level: ToggleLevel, ids: readonly string[], next: ToggleState) => void
 }): JSX.Element {
   const { projection, disabled, t } = props
   const [tab, setTab] = useState<TabId>('skill')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  // Which level's bulk dropdown is expanded — one shared slot so opening a
+  // second menu collapses the first (null = all closed). Closing on tab or
+  // search toggle keeps a stale menu from floating over another tab's rows.
+  const [bulkMenu, setBulkMenu] = useState<ToggleLevel | null>(null)
   // Rows for the active tab: every kind that tab gathers (one kind for the four
   // capability tabs, two for `security`), in the row order the projection gives.
   const activeKinds = TAB_KINDS[tab]
-  const rows = projection.rows.filter(r => activeKinds.includes(r.kind))
+  const tabRows = projection.rows.filter(r => activeKinds.includes(r.kind))
+  // The search box narrows the active tab's rows further, by display text; a
+  // blank (or closed) search box is a no-op filter, so `rows` degrades to
+  // exactly the prior per-tab list when search is untouched.
+  const needle = query.trim().toLowerCase()
+  const rows = needle === '' ? tabRows : tabRows.filter(r => rowHaystack(r, t).includes(needle))
   // Per-TAB counts: sum each tab's kinds. Seed from TAB_ORDER so a tab with zero
   // rows still shows 0, and read TAB_KINDS so the count matches exactly what the
   // tab would list (the security tab counts approval + guard together).
@@ -295,6 +412,10 @@ export function Panel(props: {
   // guards from this default-on tally.
   const offCount = projection.rows.filter(r => r.kind !== 'guard' && r.disabled).length
   const projectDisabled = projection.projectKey === ''
+  // Bulk-action target ids: every row CURRENTLY VISIBLE (active tab + search
+  // filter), not the whole inventory and not a manual selection — matching the
+  // "search narrows, bulk acts on what's shown" contract the toolbar promises.
+  const visibleIds = rows.map(r => r.id)
 
   return (
     <div className="dshct-panel" role="dialog" aria-label={t('panel.title')}>
@@ -313,7 +434,7 @@ export function Panel(props: {
             className="dshct-tab"
             data-active={tab === id}
             aria-selected={tab === id}
-            onClick={() => setTab(id)}
+            onClick={() => { setBulkMenu(null); setTab(id) }}
           >
             {t(`tab.${id}`)}
             <span className="dshct-tab-count">{counts[id]}</span>
@@ -326,16 +447,59 @@ export function Panel(props: {
         {t('note.priority.tail')}
       </div>
       {disabled ? <div className="dshct-note dshct-running" role="status">{t('note.running')}</div> : null}
-      <div className="dshct-colhead" aria-hidden="true">
-        <span className="dshct-col-cap">{t('col.capability')}</span>
+      <div className="dshct-colhead">
+        <span className="dshct-col-cap">
+          <button
+            type="button"
+            className="dshct-search-toggle"
+            data-open={searchOpen}
+            aria-expanded={searchOpen}
+            aria-label={t('search.toggle')}
+            title={t('search.toggle')}
+            onClick={() => { setBulkMenu(null); setSearchOpen(v => !v) }}
+          >
+            <svg width="1em" height="1em" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.4" />
+              <path d="M10.6 10.6L14 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+          </button>
+          <span aria-hidden="true">{t('col.capability')}</span>
+        </span>
         {LEVELS.map(level => (
-          <span key={level} className="dshct-col-lv">{t(`level.${level}`)}</span>
+          <span key={level} className="dshct-col-lv" aria-hidden="true">{t(`level.${level}`)}</span>
         ))}
-        <span className="dshct-col-badge">{t('col.result')}</span>
+        <span className="dshct-col-badge" aria-hidden="true">{t('col.result')}</span>
       </div>
-      <div className="dshct-list">
+      {searchOpen
+        ? (
+          <div className="dshct-toolbar">
+            <input
+              type="search"
+              className="dshct-search-input"
+              value={query}
+              placeholder={t('search.placeholder')}
+              aria-label={t('search.placeholder')}
+              disabled={disabled}
+              onChange={e => setQuery(e.target.value)}
+            />
+            {LEVELS.map(level => (
+              <BulkActions
+                key={level}
+                level={level}
+                open={bulkMenu === level}
+                onOpenChange={open => setBulkMenu(open ? level : null)}
+                disabled={disabled || (level === 'project' && projectDisabled) || visibleIds.length === 0}
+                t={t}
+                onPick={next => props.onSetMany(level, visibleIds, next)}
+              />
+            ))}
+            <span aria-hidden="true" />
+          </div>
+        )
+        : null}
+      <div className="dshct-list" onScroll={bulkMenu !== null ? () => setBulkMenu(null) : undefined}>
         {rows.length === 0
-          ? <div className="dshct-empty">{t('empty')}</div>
+          ? <div className="dshct-empty">{t(needle === '' ? 'empty' : 'search.empty')}</div>
           : rows.map(row => (
             <Row
               key={row.id}

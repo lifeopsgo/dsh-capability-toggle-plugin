@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.0.4] - 2026-09-01
+
+### Changed
+
+- Bulk-action buttons in the toolbar were visually cramped and fell below the WCAG 2.5.8
+  target-size floor (nine 22×22 px squares with 2 px gaps, later 15×20 px segmented
+  members). Replaced with one 24×24 px dropdown trigger per level column: clicking it
+  opens a three-item menu (enable all / disable all / clear all) whose 28 px rows are
+  comfortably reachable. At most one menu is expanded at a time (the Panel owns the
+  open-menu slot); clicking outside or pressing Escape closes it, and switching tabs or
+  toggling the search row closes any open menu so a stale menu never floats over
+  another tab's rows. Menu items reuse the ✓/✕/– glyph language of the per-row
+  switches, with per-kind colors matching the hover accents of the old buttons.
+
+### Install
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.4
+```
+
 ## [1.0.3] - 2026-08-31
 
 ### Fixed
@@ -110,6 +130,7 @@ Host and client bundles are byte-identical.
 dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
 ```
 
+[1.0.4]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.4
 [1.0.3]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.3
 [1.0.2]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.2
 [1.0.1]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.1

@@ -23,7 +23,7 @@ import {
 import { applyPromptGates, collectPromptGates } from '../src/host/prompt.ts'
 import { APPROVAL_GATE_ID, applyApprovalGate, collectApprovalGate } from '../src/host/approval.ts'
 import { writeMap } from '../src/host/store.ts'
-import { parseSetBody } from '../src/host/http.ts'
+import { parseSetBody, parseSetManyBody } from '../src/host/http.ts'
 import { SCOPE_IDENTITY_DRIFT_KEY, scopeIdentityDrift } from '../src/host/self-check.ts'
 import type { LayeredOverrides, CapabilityDescriptor } from '../src/shared/types.ts'
 
@@ -371,6 +371,71 @@ test('parseSetBody rejects an invalid state', () => {
   assert.throws(() => parseSetBody({ session: 's', level: 'global', id: 'tool:x', state: 'maybe' }), /state/)
 })
 
+// --- parseSetManyBody validation (bulk toolbar) -----------------------------
+
+test('parseSetManyBody accepts a well-formed body', () => {
+  const body = parseSetManyBody({ session: 's1', level: 'session', ids: ['tool:x', 'skill:y'], state: 'off' })
+  assert.deepEqual(body, { session: 's1', level: 'session', ids: ['tool:x', 'skill:y'], state: 'off' })
+})
+
+test('parseSetManyBody accepts each valid level and state', () => {
+  for (const level of ['session', 'project', 'global']) {
+    for (const state of ['on', 'off', 'inherit']) {
+      const body = parseSetManyBody({ session: 's', level, ids: ['tool:x'], state })
+      assert.equal(body.level, level)
+      assert.equal(body.state, state)
+    }
+  }
+})
+
+test('parseSetManyBody accepts an empty ids array (a legal no-op selection)', () => {
+  const body = parseSetManyBody({ session: 's', level: 'global', ids: [], state: 'off' })
+  assert.deepEqual(body.ids, [])
+})
+
+test('parseSetManyBody rejects a non-object body', () => {
+  assert.throws(() => parseSetManyBody(null), /object/)
+  assert.throws(() => parseSetManyBody('nope'), /object/)
+})
+
+test('parseSetManyBody rejects a missing or empty session', () => {
+  assert.throws(() => parseSetManyBody({ level: 'session', ids: ['tool:x'], state: 'off' }), /session/)
+  assert.throws(
+    () => parseSetManyBody({ session: '', level: 'session', ids: ['tool:x'], state: 'off' }),
+    /session/,
+  )
+})
+
+test('parseSetManyBody rejects an unknown level', () => {
+  assert.throws(
+    () => parseSetManyBody({ session: 's', level: 'workspace', ids: ['tool:x'], state: 'off' }),
+    /level/,
+  )
+})
+
+test('parseSetManyBody rejects a non-array ids', () => {
+  assert.throws(() => parseSetManyBody({ session: 's', level: 'global', ids: 'tool:x', state: 'off' }), /ids/)
+  assert.throws(() => parseSetManyBody({ session: 's', level: 'global', ids: undefined, state: 'off' }), /ids/)
+})
+
+test('parseSetManyBody rejects an ids array containing a non-string or empty entry', () => {
+  assert.throws(
+    () => parseSetManyBody({ session: 's', level: 'global', ids: ['tool:x', ''], state: 'off' }),
+    /ids/,
+  )
+  assert.throws(
+    () => parseSetManyBody({ session: 's', level: 'global', ids: ['tool:x', 42], state: 'off' }),
+    /ids/,
+  )
+})
+
+test('parseSetManyBody rejects an invalid state', () => {
+  assert.throws(
+    () => parseSetManyBody({ session: 's', level: 'global', ids: ['tool:x'], state: 'maybe' }),
+    /state/,
+  )
+})
+
 // --- approval gate (5th capability family) ----------------------------------
 
 /**
@@ -696,6 +761,7 @@ test('every dictionary key is actually referenced by a component (no dead keys)'
   const dynamicPrefixes = [
     'tab.', 'level.', 'state.', 'prompt.', 'guard.readonly', 'guard.protect-secrets',
     'guard.dangerous-shell', 'guard.no-destructive-git', 'guard.no-network', 'guard.action.',
+    'bulk.',
   ]
   const dead = Object.keys(dictionaries.zh).filter((k) => {
     if (src.includes(`'${k}'`) || src.includes(`\`${k}\``)) return false
@@ -706,6 +772,14 @@ test('every dictionary key is actually referenced by a component (no dead keys)'
 })
 
 // ---- Hardening: stanceAt prototype-chain safety (F2) ----
+
+test('the shipped client bundle carries the bulk-action dropdown (no stale lib/)', async () => {
+  const { readFileSync } = await import('node:fs')
+  const bundle = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
+  for (const marker of ['dshct-bulk-menu', 'dshct-bulk-item', 'aria-haspopup', 'bulk.menu']) {
+    assert.ok(bundle.includes(marker), `shipped lib/client.js is stale: missing "${marker}" — run pnpm build`)
+  }
+})
 
 test('stanceAt returns inherit for prototype-chain keys, not an inherited member', () => {
   // A bare map[id] would resolve these to Object.prototype members (functions),

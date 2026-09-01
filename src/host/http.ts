@@ -9,6 +9,11 @@
  *   POST /api/plugin/capability-toggle/set
  *        body { session, level, id, state } -> writes one stance and returns the
  *           refreshed projection.
+ *   POST /api/plugin/capability-toggle/set-many
+ *        body { session, level, ids, state } -> writes the same stance to every
+ *           listed id in one settings write, and returns the refreshed
+ *           projection. Backs the panel's bulk toolbar (enable/disable/clear a
+ *           filtered tab's visible rows at one level).
  *
  * This is a Host-owned control channel, not model-visible state, so it lives off
  * the session log entirely (see host/config.ts for why the state is not a
@@ -25,8 +30,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
 
 import type { ToggleLevel, ToggleState } from '../shared/types.ts'
+import type { AgentBinding } from './agent-binding.ts'
 import type { ControllerRegistry } from './controller.ts'
-import type { OverrideStore } from './store.ts'
+import type { LevelSelector, OverrideStore } from './store.ts'
 import { WRITABLE_LEVELS } from './store.ts'
 
 /** URL path prefix this plugin claims on the web server. */
@@ -37,6 +43,14 @@ export interface SetBody {
   readonly session: string
   readonly level: ToggleLevel
   readonly id: string
+  readonly state: ToggleState
+}
+
+/** Parsed and validated body of a set-many (bulk) request. */
+export interface SetManyBody {
+  readonly session: string
+  readonly level: ToggleLevel
+  readonly ids: readonly string[]
   readonly state: ToggleState
 }
 
@@ -62,7 +76,13 @@ export function installHttp(
     path: `${ROUTE_PREFIX}/set`,
     handler: (req, res) => guard(ctx, res, () => handleSet(req, res, store, registry)),
   })
+  const disposeSetMany = ctx.webServer.register({
+    kind: 'exact',
+    path: `${ROUTE_PREFIX}/set-many`,
+    handler: (req, res) => guard(ctx, res, () => handleSetMany(req, res, store, registry)),
+  })
   return () => {
+    disposeSetMany()
     disposeSet()
     disposeState()
   }
@@ -138,7 +158,54 @@ async function handleSet(
     sendJson(res, 400, { error: error instanceof Error ? error.message : 'invalid body' })
     return
   }
-  const binding = registry.get(body.session)
+  const resolved = resolveWriteTarget(body.session, body.level, registry)
+  if (resolved === null) {
+    sendJson(res, 409, { error: 'this session has no project root; use session or global level' })
+    return
+  }
+  await store.set(resolved.selector, body.id, body.state)
+  await respondWithProjection(res, body.session, resolved.binding, registry)
+}
+
+/** Apply the same stance to every listed id in one write, then return the refreshed projection. */
+async function handleSetMany(
+  req: IncomingMessage,
+  res: ServerResponse,
+  store: OverrideStore,
+  registry: ControllerRegistry,
+): Promise<void> {
+  let body: SetManyBody
+  try {
+    body = parseSetManyBody(await readBody(req))
+  } catch (error) {
+    sendJson(res, 400, { error: error instanceof Error ? error.message : 'invalid body' })
+    return
+  }
+  const resolved = resolveWriteTarget(body.session, body.level, registry)
+  if (resolved === null) {
+    sendJson(res, 409, { error: 'this session has no project root; use session or global level' })
+    return
+  }
+  await store.setMany(resolved.selector, body.ids, body.state)
+  await respondWithProjection(res, body.session, resolved.binding, registry)
+}
+
+/**
+ * Resolve one write's level selector against the session's live or last-known
+ * project key, shared by {@link handleSet} and {@link handleSetMany} so both
+ * apply the exact same project-availability rule.
+ * @param session - the session id the write addresses.
+ * @param level - the requested write level.
+ * @param registry - the live-agent controller registry.
+ * @returns the selector and the session's live binding (if any), or `null`
+ *   when a project-level write was requested with no resolvable project root.
+ */
+function resolveWriteTarget(
+  session: string,
+  level: ToggleLevel,
+  registry: ControllerRegistry,
+): { readonly selector: LevelSelector; readonly binding: AgentBinding | undefined } | null {
+  const binding = registry.get(session)
 
   // The project root the project level writes under. A live binding carries it;
   // with no live agent (a write while idle, between turns) fall back to the
@@ -146,20 +213,32 @@ async function handleSet(
   // session id — NOT a live agent — so a toggle applied while idle still
   // persists. `undefined` means we have never seen this session live and cannot
   // resolve its project root, so a project-level write cannot be placed.
-  const projectKey = binding?.projectKey ?? registry.lastKnownProjectKey(body.session)
+  const projectKey = binding?.projectKey ?? registry.lastKnownProjectKey(session)
 
-  if (body.level === 'project' && (projectKey === undefined || projectKey === '')) {
-    sendJson(res, 409, { error: 'this session has no project root; use session or global level' })
-    return
-  }
+  if (level === 'project' && (projectKey === undefined || projectKey === '')) return null
 
-  const selector =
-    body.level === 'global' ? { level: 'global' as const }
-    : body.level === 'project' ? { level: 'project' as const, key: projectKey as string }
-    : { level: 'session' as const, key: body.session }
+  const selector: LevelSelector =
+    level === 'global' ? { level: 'global' }
+    : level === 'project' ? { level: 'project', key: projectKey as string }
+    : { level: 'session', key: session }
 
-  await store.set(selector, body.id, body.state)
+  return { selector, binding }
+}
 
+/**
+ * Answer a write with the refreshed projection, shared by {@link handleSet}
+ * and {@link handleSetMany} once the store write itself has completed.
+ * @param res - the response to complete.
+ * @param session - the session id the write addressed.
+ * @param binding - the session's live binding, or undefined when idle.
+ * @param registry - the live-agent controller registry.
+ */
+async function respondWithProjection(
+  res: ServerResponse,
+  session: string,
+  binding: AgentBinding | undefined,
+  registry: ControllerRegistry,
+): Promise<void> {
   if (binding !== undefined) {
     // A live agent must have the write applied to its scope now. The settings
     // commit event also triggers reconcile on every agent (via the store watcher
@@ -180,7 +259,7 @@ async function handleSet(
   // defined here because handleState/this write only reach the session-level
   // path with a cached snapshot; a session never seen live has no snapshot, so
   // guard against that and answer with the persisted stance echoed minimally.
-  const fallback = registry.fallbackProjection(body.session)
+  const fallback = registry.fallbackProjection(session)
   if (fallback === undefined) {
     sendJson(res, 404, { error: 'no live agent for session' })
     return
@@ -209,6 +288,31 @@ export function parseSetBody(raw: unknown): SetBody {
     throw new Error('state must be on, off, or inherit')
   }
   return { session, level: level as ToggleLevel, id, state }
+}
+
+/**
+ * Validate an unknown parsed body into a SetManyBody, throwing on any
+ * deviation. Exported for the same unit-testability reason as
+ * {@link parseSetBody}.
+ */
+export function parseSetManyBody(raw: unknown): SetManyBody {
+  if (raw === null || typeof raw !== 'object') throw new Error('body must be an object')
+  const b = raw as Record<string, unknown>
+  const session = b['session']
+  const level = b['level']
+  const ids = b['ids']
+  const state = b['state']
+  if (typeof session !== 'string' || session === '') throw new Error('session must be a non-empty string')
+  if (typeof level !== 'string' || !WRITABLE_LEVELS.includes(level as ToggleLevel)) {
+    throw new Error('level must be one of session, project, global')
+  }
+  if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || id === '')) {
+    throw new Error('ids must be an array of non-empty strings')
+  }
+  if (state !== 'on' && state !== 'off' && state !== 'inherit') {
+    throw new Error('state must be on, off, or inherit')
+  }
+  return { session, level: level as ToggleLevel, ids: ids as string[], state }
 }
 
 /** Read a request body as UTF-8 text, bounded to a sane size. */

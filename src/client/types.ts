@@ -76,6 +76,14 @@ export interface SetRequest {
   readonly state: 'on' | 'off' | 'inherit'
 }
 
+/** The set-many (bulk toolbar) request body the panel POSTs to the Host. */
+export interface SetManyRequest {
+  readonly session: string
+  readonly level: 'session' | 'project' | 'global'
+  readonly ids: readonly string[]
+  readonly state: 'on' | 'off' | 'inherit'
+}
+
 /** The Host response carrying a refreshed projection. */
 export interface StateResponse {
   readonly projection: CapabilityToggleProjection

@@ -8,7 +8,7 @@
  */
 
 import type { CapabilityToggleProjection } from '../shared/types.ts'
-import type { SetRequest, StateResponse } from './types.ts'
+import type { SetManyRequest, SetRequest, StateResponse } from './types.ts'
 
 /** URL prefix the Host claims (mirrors host/http.ts ROUTE_PREFIX). */
 const API = '/api/plugin/capability-toggle'
@@ -34,6 +34,22 @@ export async function fetchState(session: string): Promise<CapabilityToggleProje
 export async function writeState(req: SetRequest): Promise<CapabilityToggleProjection | null> {
   try {
     const res = await fetch(`${API}/set`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(req),
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as StateResponse
+    return body.projection ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Write one stance to every listed id; returns the refreshed projection, or null on failure. */
+export async function writeStateMany(req: SetManyRequest): Promise<CapabilityToggleProjection | null> {
+  try {
+    const res = await fetch(`${API}/set-many`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify(req),

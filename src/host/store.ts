@@ -79,39 +79,76 @@ export class OverrideStore {
    * @param state - the new stance; `inherit` clears the stored entry.
    */
   async set(selector: LevelSelector, id: string, state: ToggleState): Promise<void> {
-    const doc = this.read()
-    // `update()` is merge-only and cannot express a key deletion, so an
-    // `inherit` write (which removes the stored key) would silently persist the
-    // old on/off. `replace()` writes the whole section wholesale, so we rebuild
-    // the complete document and hand it over each time.
-    if (selector.level === 'global') {
-      await this.scope.replace({ ...doc, global: writeMap(doc.global, id, state) })
-      return
-    }
-    const bucket = selector.level === 'project' ? doc.projects : doc.sessions
-    const current = bucket[selector.key] ?? {}
-    const nextMap = writeMap(current, id, state)
-    const nextBucket = { ...bucket }
-    // Self-cleaning: a bucket entry whose map just went empty (every toggle
-    // reset to `inherit`) is dropped, not left as `{}`. This is the ONLY reclaim
-    // path for the `sessions` bucket — there is deliberately no `agent/disposed`
-    // hook that prunes a session's stored overrides, because a session-level
-    // stance is meant to survive a reload/restart of that session (dropping it
-    // when the live agent goes away would defeat the level's purpose). The
-    // consequence is a KNOWN, bounded monotonic growth: one small `{id: on|off}`
-    // entry persists per session that was ever toggled at session level and not
-    // later cleared — a few bytes each, never touched on a hot path, only on an
-    // explicit user write. It is not a runtime leak (nothing re-reads it into
-    // memory per agent), and it self-heals whenever the user resets a session's
-    // toggles. If a deployment ever accumulates enough dormant sessions to care,
-    // the fix is a settings-level GC keyed on genuinely-ended sessions, not a
-    // dispose-time delete here. Documented rather than "fixed" on purpose.
-    if (Object.keys(nextMap).length === 0) delete nextBucket[selector.key]
-    else nextBucket[selector.key] = nextMap
-    const field = selector.level === 'project' ? 'projects' : 'sessions'
-    await this.scope.replace({ ...doc, [field]: nextBucket })
+    await this.scope.replace(nextDocument(this.read(), selector, map => writeMap(map, id, state)))
   }
 
+  /**
+   * Set several ids to the same stance at one level in a SINGLE settings write.
+   * Equivalent to calling {@link set} once per id, but batched: one `replace()`
+   * (one queue slot, one persist, one commit/broadcast) instead of `ids.length`
+   * separate round trips through the settings write queue. Used by the panel's
+   * bulk toolbar action (enable-all / disable-all / clear-all on a filtered
+   * tab), where an empty selection is a legal no-op.
+   * @param selector - which level (and key) to write.
+   * @param ids - the switch keys to set; duplicates are applied in order (the
+   *   last occurrence of a given id wins, matching a sequential {@link set}).
+   * @param state - the new stance for every id; `inherit` clears the stored entry.
+   */
+  async setMany(selector: LevelSelector, ids: readonly string[], state: ToggleState): Promise<void> {
+    if (ids.length === 0) return
+    await this.scope.replace(nextDocument(this.read(), selector, map => {
+      let next = map
+      for (const id of ids) next = writeMap(next, id, state)
+      return next
+    }))
+  }
+
+}
+
+/**
+ * Compute the whole next document after applying `transform` to one level's
+ * override map. Shared by {@link OverrideStore.set} and
+ * {@link OverrideStore.setMany} so both write through the exact same
+ * self-cleaning bucket logic — see the field-level comment below for why an
+ * emptied bucket entry is dropped, not left as `{}`.
+ * @param doc - the current stored document.
+ * @param selector - which level (and key) to write.
+ * @param transform - maps the level's current override map to its next value.
+ * @returns the complete next document, ready for `scope.replace()`.
+ */
+function nextDocument(
+  doc: StoredDocument,
+  selector: LevelSelector,
+  transform: (map: OverrideMap) => OverrideMap,
+): StoredDocument {
+  // `update()` is merge-only and cannot express a key deletion, so an `inherit`
+  // write (which removes the stored key) would silently persist the old
+  // on/off. `replace()` writes the whole section wholesale, so we rebuild the
+  // complete document and hand it over each time.
+  if (selector.level === 'global') {
+    return { ...doc, global: transform(doc.global) }
+  }
+  const bucket = selector.level === 'project' ? doc.projects : doc.sessions
+  const nextMap = transform(bucket[selector.key] ?? {})
+  const nextBucket = { ...bucket }
+  // Self-cleaning: a bucket entry whose map just went empty (every toggle reset
+  // to `inherit`) is dropped, not left as `{}`. This is the ONLY reclaim path
+  // for the `sessions` bucket — there is deliberately no `agent/disposed` hook
+  // that prunes a session's stored overrides, because a session-level stance is
+  // meant to survive a reload/restart of that session (dropping it when the
+  // live agent goes away would defeat the level's purpose). The consequence is
+  // a KNOWN, bounded monotonic growth: one small `{id: on|off}` entry persists
+  // per session that was ever toggled at session level and not later cleared —
+  // a few bytes each, never touched on a hot path, only on an explicit user
+  // write. It is not a runtime leak (nothing re-reads it into memory per
+  // agent), and it self-heals whenever the user resets a session's toggles. If
+  // a deployment ever accumulates enough dormant sessions to care, the fix is a
+  // settings-level GC keyed on genuinely-ended sessions, not a dispose-time
+  // delete here. Documented rather than "fixed" on purpose.
+  if (Object.keys(nextMap).length === 0) delete nextBucket[selector.key]
+  else nextBucket[selector.key] = nextMap
+  const field = selector.level === 'project' ? 'projects' : 'sessions'
+  return { ...doc, [field]: nextBucket }
 }
 
 /**
