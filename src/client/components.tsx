@@ -129,12 +129,12 @@ function LevelSwitch(props: {
 
 /**
  * The bulk-action dropdown for one level column in the search toolbar: a
- * single 24×24 trigger that opens a three-item menu (enable all / disable all
+ * single 28×28 trigger that opens a three-item menu (enable all / disable all
  * / clear all), reusing the same ✓/✕/– glyph language as {@link LevelSwitch}'s
  * stances so a column reads as one control whether it is acting on a single
- * row or on every currently visible one. One 24×24 target replaces the old
+ * row or on every currently visible one. One 28×28 target replaces the old
  * 9-button grid whose 15×20 members fell below the WCAG 2.5.8 target-size
- * floor; the actions move into a menu whose 28px rows are comfortably
+ * floor; the actions move into a menu whose 32px rows are comfortably
  * reachable. `open`/`onOpenChange` are owned by the Panel so at most one
  * menu is ever expanded (opening B closes A). `disabled` covers the
  * running-agent lock, a project column with no project root, AND an empty
@@ -188,7 +188,7 @@ function BulkActions(props: {
         onClick={() => onOpenChange(!open)}
       >
         <svg width="1em" height="1em" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M3 5h10M3 8h10M3 11h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M4.5 6.25 8 9.75l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
       {open

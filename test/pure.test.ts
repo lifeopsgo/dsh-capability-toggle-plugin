@@ -773,10 +773,21 @@ test('every dictionary key is actually referenced by a component (no dead keys)'
 
 // ---- Hardening: stanceAt prototype-chain safety (F2) ----
 
-test('the shipped client bundle carries the bulk-action dropdown (no stale lib/)', async () => {
+test('the shipped client bundle carries the aligned bulk-action dropdown (no stale lib/)', async () => {
   const { readFileSync } = await import('node:fs')
   const bundle = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
-  for (const marker of ['dshct-bulk-menu', 'dshct-bulk-item', 'aria-haspopup', 'bulk.menu']) {
+  const markers = [
+    'dshct-bulk-menu', 'dshct-bulk-item', 'aria-haspopup', 'bulk.menu',
+    'height:28px;box-sizing:border-box;padding:0 10px',
+    'width:28px;height:28px;box-sizing:border-box',
+    'width:128px;box-sizing:border-box',
+    'grid-template-columns:18px minmax(0,1fr)',
+    '.dshct-bulk-item span{min-width:0;display:block;line-height:16px}',
+    'M4.5 6.25 8 9.75l3.5-3.5',
+    '.dshct-bulk-btn[data-open=false]:hover:not(:disabled)',
+    '.dshct-bulk-btn[data-open=true] svg{transform:rotate(180deg)}',
+  ]
+  for (const marker of markers) {
     assert.ok(bundle.includes(marker), `shipped lib/client.js is stale: missing "${marker}" — run pnpm build`)
   }
 })

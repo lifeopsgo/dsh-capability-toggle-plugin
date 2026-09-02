@@ -5,7 +5,7 @@
 **Control agent capabilities from the DSH WebUI — with real runtime enforcement.**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#quick-start)
-![tests](https://img.shields.io/badge/tests-107%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-108%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -26,7 +26,7 @@ A **DeepSeek Harness (DSH) WebUI** plugin for controlling **skills, MCP servers,
 Requires **Node.js ≥ 22.6**.
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.4
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.1.0
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -42,7 +42,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.0.4
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.1.0
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -107,8 +107,8 @@ Additional behavior: switches lock while the agent runs, state survives popup cl
 Planned, not yet implemented:
 
 - **Cross-project config sync** — copy or link project-level settings from another project instead of configuring each project from scratch.
-- ~~**Filter and select-all**~~ — shipped in v1.0.4: the toolbar's search box filters rows, and each level's bulk menu applies enable/disable/clear to every currently visible row.
-- ~~**Bulk actions on a filtered selection**~~ — shipped in v1.0.4 together with the filter (search narrows, bulk acts on what's shown).
+- ~~**Filter and select-all**~~ — shipped in v1.1.0: the toolbar's search box filters rows, and each level's bulk menu applies enable/disable/clear to every currently visible row.
+- ~~**Bulk actions on a filtered selection**~~ — shipped in v1.1.0 together with the filter (search narrows, bulk acts on what's shown).
 
 ---
 
