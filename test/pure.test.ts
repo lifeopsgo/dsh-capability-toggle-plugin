@@ -323,6 +323,141 @@ test('OverrideStore registers its namespace by passing the plain string to setti
   assert.equal(calls[0]?.[1], StoredDocumentSchema, 'schema must be the stored-document schema')
 })
 
+// --- peer range must admit the DSH prereleases users actually run ------------
+
+// A minimal semver `satisfies` for the comparator forms this manifest uses
+// (`^`, `>=`, `<`, space-separated conjunction, `||` disjunction). It exists
+// because the plugin ships no semver dependency and adding one for a test would
+// mean re-installing the host framework. Its equivalence to real semver was
+// checked over 200 range/version combinations, including every prerelease rule
+// asserted below.
+interface SemVer { major: number; minor: number; patch: number; pre: readonly string[] }
+
+function parseSemVer(value: string): SemVer {
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(value)
+  if (m === null) throw new Error(`not a version: ${value}`)
+  return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]), pre: m[4] !== undefined ? m[4].split('.') : [] }
+}
+
+function comparePre(a: readonly string[], b: readonly string[]): number {
+  if (a.length === 0 && b.length === 0) return 0
+  // A version WITH a prerelease sorts below the same version without one.
+  if (a.length === 0) return 1
+  if (b.length === 0) return -1
+  const n = Math.max(a.length, b.length)
+  for (let i = 0; i < n; i += 1) {
+    const x = a[i]
+    const y = b[i]
+    if (x === undefined) return -1
+    if (y === undefined) return 1
+    const nx = /^\d+$/.test(x)
+    const ny = /^\d+$/.test(y)
+    if (nx && ny) { if (Number(x) !== Number(y)) return Number(x) < Number(y) ? -1 : 1 }
+    else if (nx) return -1
+    else if (ny) return 1
+    else if (x !== y) return x < y ? -1 : 1
+  }
+  return 0
+}
+
+function compareSemVer(a: SemVer, b: SemVer): number {
+  if (a.major !== b.major) return a.major - b.major
+  if (a.minor !== b.minor) return a.minor - b.minor
+  if (a.patch !== b.patch) return a.patch - b.patch
+  return comparePre(a.pre, b.pre)
+}
+
+interface Comparator { op: '>=' | '>' | '<=' | '<' | '='; ver: SemVer }
+
+function expandComparator(text: string): readonly Comparator[] {
+  if (text.startsWith('^')) {
+    const v = parseSemVer(text.slice(1))
+    // ^0.x pins the minor (^0.1.2 → <0.2.0-0); ^1.x pins the major.
+    const upper: SemVer = v.major === 0
+      ? { major: 0, minor: v.minor + 1, patch: 0, pre: ['0'] }
+      : { major: v.major + 1, minor: 0, patch: 0, pre: ['0'] }
+    return [{ op: '>=', ver: v }, { op: '<', ver: upper }]
+  }
+  const m = /^(>=|<=|>|<|=)?(.+)$/.exec(text)
+  if (m === null) throw new Error(`not a comparator: ${text}`)
+  return [{ op: (m[1] ?? '=') as Comparator['op'], ver: parseSemVer(m[2] as string) }]
+}
+
+function meetsComparator(c: Comparator, v: SemVer): boolean {
+  const r = compareSemVer(v, c.ver)
+  switch (c.op) {
+    case '>=': return r >= 0
+    case '>': return r > 0
+    case '<=': return r <= 0
+    case '<': return r < 0
+    default: return r === 0
+  }
+}
+
+function satisfies(version: string, range: string): boolean {
+  const v = parseSemVer(version)
+  return range.split('||').some((clause) => {
+    const comps = clause.trim().split(/\s+/).filter(Boolean).flatMap(expandComparator)
+    if (!comps.every(c => meetsComparator(c, v))) return false
+    // THE PRERELEASE RULE, and the reason this test exists: a prerelease version
+    // is accepted only when some comparator in the set names a prerelease of the
+    // SAME [major,minor,patch] tuple. So `>=0.1.1-rc.0` admits 0.1.1-rc.2 but
+    // NOT 0.1.2-rc.1 — a different tuple. Each tuple needs its own anchor,
+    // which is what the `-0` comparators below add.
+    if (v.pre.length === 0) return true
+    return comps.some(c =>
+      c.ver.pre.length > 0
+      && c.ver.major === v.major && c.ver.minor === v.minor && c.ver.patch === v.patch)
+  })
+}
+
+test('the mini semver helper agrees with real semver on the prerelease rule', () => {
+  // Lock the helper itself before trusting it to police the manifest.
+  assert.equal(satisfies('0.1.1-rc.2', '>=0.1.1-rc.0'), true, 'same-tuple prerelease is admitted')
+  assert.equal(satisfies('0.1.2-rc.1', '>=0.1.1-rc.0'), false, 'different-tuple prerelease is NOT admitted')
+  assert.equal(satisfies('0.1.2-rc.1', '<0.2.0-0'), false, 'a prerelease upper bound admits only its own tuple')
+  assert.equal(satisfies('0.1.2-rc.1', '>=0.1.2-0 <0.2.0-0'), true, 'a -0 anchor on the same tuple admits it')
+  assert.equal(satisfies('0.1.3', '^0.1.0-rc.8'), true, 'stable releases are unaffected')
+  assert.equal(satisfies('0.2.0-rc.1', '>=0.1.2-0 <0.2.0-0'), false, 'the 0.2.0 prerelease stays excluded')
+})
+
+test('every DSH peer range admits the prereleases users actually run', async () => {
+  const { readFileSync } = await import('node:fs')
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+    peerDependencies: Record<string, string>
+  }
+  const dshPeers = Object.entries(pkg.peerDependencies).filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
+  assert.ok(dshPeers.length >= 10, 'expected the full DSH peer set, got ' + String(dshPeers.length))
+  // 0.1.2-rc.1 and 0.1.3-alpha.2 are the prereleases npm publishes as `next`
+  // and `alpha`, so they are what a host tracks before a stable cut. The range
+  // shipped in v1.1.0 rejected BOTH, and nothing in the suite said so — this
+  // test is the assertion that was missing.
+  const mustAdmit = ['0.1.0-rc.8', '0.1.1-rc.2', '0.1.2-rc.1', '0.1.3-alpha.1', '0.1.3-alpha.2', '0.1.2', '0.1.3']
+  const mustReject = ['0.2.0-rc.1', '0.2.0', '0.1.0-rc.7', '0.0.1-rc.1']
+  for (const [name, range] of dshPeers) {
+    for (const v of mustAdmit) assert.ok(satisfies(v, range), `${name}@${v} must satisfy ${range}`)
+    for (const v of mustReject) assert.ok(!satisfies(v, range), `${name}@${v} must NOT satisfy ${range}`)
+  }
+})
+
+test('the DSH peer ranges are all one string, so widening stays uniform', async () => {
+  const { readFileSync } = await import('node:fs')
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+    peerDependencies: Record<string, string>
+  }
+  const dshRanges = new Set(
+    Object.entries(pkg.peerDependencies)
+      .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
+      .map(([, range]) => range),
+  )
+  // A stray narrower range on one package installs a second framework copy for
+  // that package alone — the duplicate-dsh-scope failure mode that collapses the
+  // Skills tab. All DSH peers must therefore carry the identical range.
+  assert.equal(dshRanges.size, 1, 'every @deepseek-ai/dsh-* peer must share one range')
+  // cordis and schemastery are versioned independently and stay out of this.
+  assert.match(pkg.peerDependencies['@deepseek-ai/cordis'] as string, /^\^4\./)
+})
+
 // --- collectPromptGates probe (H4) ------------------------------------------
 
 /**
@@ -1001,6 +1136,160 @@ test('the shipped bundle feeds the call tally into the projection', async () => 
     built.includes('this.guardHits, this.callHits)'),
     'the projection call must pass both tallies, guard hits then call hits',
   )
+})
+
+// ---- session identity across the two InputBar prop eras ----
+
+// DSH commit 5f1eca58ea ("perf: InputBar use immutable props", an ancestor of
+// dsh-v0.1.2-rc.1, dsh-v0.1.3-alpha.1/-alpha.2 and HEAD) changed the owner share
+// handed to `conversation.input.left` from `renderSlot(key, zone)` — where
+// `zone = { session, input }` — to `renderSlot(key, {})`. Verified against both
+// installed builds: 0.1.1-rc.2 ships the `zone` form, 0.1.2-rc.1 ships `{}`, and
+// the 0.1.3-alpha.2 source ships `{}` too. Session-scoped slots now receive the
+// standing framework seats instead, so the session id arrives as a direct
+// `sessionId` prop and `running` through the `useSession` selector hook.
+// Reading `props.session.sessionId` therefore throws a TypeError on 0.1.2+,
+// which blanked the whole composer control on first render. One build must serve
+// both eras, so the readers below prefer the legacy object when present (the
+// path verified live on 0.1.1-rc.2) and fall back to the framework seats.
+
+test('sessionIdOf reads the legacy zone object a DSH 0.1.1 InputBar passes', async () => {
+  const { sessionIdOf } = await import('../src/client/session.ts')
+  assert.equal(sessionIdOf({ session: { sessionId: 'sess-1', running: false } }), 'sess-1')
+})
+
+test('sessionIdOf reads the direct prop a DSH 0.1.2+ InputBar passes', async () => {
+  const { sessionIdOf } = await import('../src/client/session.ts')
+  assert.equal(sessionIdOf({ sessionId: 'sess-2' }), 'sess-2')
+})
+
+test('runningOf reads running from the legacy zone object', async () => {
+  const { runningOf } = await import('../src/client/session.ts')
+  assert.equal(runningOf({ session: { sessionId: 'sess-1', running: true } }), true)
+  assert.equal(runningOf({ session: { sessionId: 'sess-1', running: false } }), false)
+})
+
+test('runningOf reads running through the useSession selector', async () => {
+  const { runningOf } = await import('../src/client/session.ts')
+  // The reader must call the seat with a selector function and must select ONLY
+  // `running`, so an unrelated snapshot change cannot re-render the control.
+  const selectors: unknown[] = []
+  const useSession = <T,>(selector: (s: { sessionId?: string; running?: boolean }) => T): T => {
+    selectors.push(selector)
+    return selector({ sessionId: 'sess-2', running: true })
+  }
+  assert.equal(runningOf({ sessionId: 'sess-2', useSession }), true)
+  assert.equal(selectors.length, 1)
+  const picked = (selectors[0] as (s: Record<string, unknown>) => unknown)({
+    sessionId: 'x', running: false, queue: [1, 2, 3], promptError: 'noise',
+  })
+  assert.equal(picked, false, 'the selector must read running only')
+})
+
+test('the readers survive the empty owner share a DSH 0.1.2 InputBar passes', async () => {
+  const { sessionIdOf, runningOf } = await import('../src/client/session.ts')
+  // This is the regression itself: `renderSlot('conversation.input.left', {})`
+  // hands the component an object carrying neither `session` nor `sessionId`,
+  // and the old `session.sessionId` read threw here. Degrading to '' and false
+  // keeps the control mounted instead of blanking the composer.
+  assert.doesNotThrow(() => sessionIdOf({}))
+  assert.doesNotThrow(() => runningOf({}))
+  assert.equal(sessionIdOf({}), '')
+  assert.equal(runningOf({}), false)
+})
+
+test('the readers tolerate a session object missing the fields they read', async () => {
+  const { sessionIdOf, runningOf } = await import('../src/client/session.ts')
+  // A drifted framework could hand over a `session` that is present but shaped
+  // differently; the readers degrade rather than throw from inside render.
+  assert.doesNotThrow(() => sessionIdOf({ session: {} }))
+  assert.doesNotThrow(() => runningOf({ session: null }))
+  assert.equal(sessionIdOf({ session: {} }), '')
+  assert.equal(runningOf({ session: null }), false)
+})
+
+test('the readers prefer the legacy object when a host supplies both', async () => {
+  const { sessionIdOf, runningOf } = await import('../src/client/session.ts')
+  // 0.1.1-rc.2's slot catalog already DECLARES the framework seats, so a host
+  // could pass both. Preferring the legacy object keeps the path verified live
+  // on 0.1.1-rc.2 in charge there.
+  const props = {
+    session: { sessionId: 'legacy', running: true },
+    sessionId: 'modern',
+    useSession: <T,>(selector: (s: { running?: boolean }) => T) => selector({ running: false }),
+  }
+  assert.equal(sessionIdOf(props), 'legacy')
+  assert.equal(runningOf(props), true)
+})
+
+test('runningOf lets a throwing useSession propagate rather than catching it', async () => {
+  const { runningOf } = await import('../src/client/session.ts')
+  const { readFileSync } = await import('node:fs')
+  // Deliberately NOT wrapped in try/catch. `useSession` is a React hook seat, so
+  // catching a throw that happens AFTER React assigned the hook slot would leave
+  // the hook count lower than the previous render and trigger "rendered fewer
+  // hooks than expected" on the next render — the guard would manufacture the
+  // crash it meant to prevent. A throwing seat must bubble to React's error
+  // boundary, which is the only layer that can unwind the hook order correctly.
+  const hostile = { sessionId: 's', useSession: () => { throw new Error('seat exploded') } }
+  assert.throws(() => runningOf(hostile), /seat exploded/)
+  // Lock the source shape too: the helper must call the seat with no try around
+  // it, so a future "defensive" catch is a visible regression, not a silent one.
+  const src = readFileSync(new URL('../src/client/session.ts', import.meta.url), 'utf8')
+  assert.ok(!/try\s*\{[^}]*useSession/.test(src), 'runningOf must not wrap the useSession seat in try/catch')
+})
+
+test('the control component routes both reads through the era-agnostic helpers', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/client/index.tsx', import.meta.url), 'utf8')
+  // Asserting the source keeps a refactor honest: the component must not
+  // destructure `session` and dereference it, which is exactly what threw on
+  // 0.1.2+. Both values must come from the readers.
+  assert.match(src, /const sessionId = sessionIdOf\(props\)/)
+  assert.match(src, /const running = runningOf\(props\)/)
+  assert.ok(!/const \{ session/.test(src), 'the component must not destructure a legacy session prop')
+})
+
+test('the shipped client bundle carries the session readers', async () => {
+  const { readFileSync } = await import('node:fs')
+  const built = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
+  // The bundle — not the source — is what a git-tag install runs. An unguarded
+  // `session.sessionId` left in the shipped artifact would reintroduce the
+  // TypeError on 0.1.2+ even with correct sources.
+  assert.ok(built.includes('sessionIdOf') && built.includes('runningOf'),
+    'the bundle must carry both session readers')
+  assert.ok(!built.includes('session.sessionId'),
+    'the bundle must not read sessionId off an unguarded legacy session object')
+})
+
+test('runningOf calls the useSession hook a constant number of times per branch', async () => {
+  const { runningOf } = await import('../src/client/session.ts')
+  // Load-bearing for Rules of Hooks. runningOf calls the seat inside a branch, so
+  // it is only safe because each branch's hook count is FIXED: the legacy branch
+  // calls it zero times, the seat branch exactly once. Safety then rests on the
+  // host never switching a mounted component between branches — 0.1.1 mounts the
+  // slot only when its `zone` object exists (`leftItems: zone === void 0 ? null :
+  // renderSlot(...)`), and 0.1.2+ mounts it only with an empty owner share, so
+  // the era is stable for the component's lifetime. Locking the counts means a
+  // future edit that calls the seat twice, or conditionally within one branch,
+  // fails here instead of surfacing as a hook-order crash in the browser.
+  let seatCalls = 0
+  const seat = <T,>(selector: (s: { running?: boolean }) => T): T => {
+    seatCalls += 1
+    return selector({ running: true })
+  }
+
+  seatCalls = 0
+  runningOf({ session: { sessionId: 's', running: false }, useSession: seat })
+  assert.equal(seatCalls, 0, 'the legacy branch must not call the hook at all')
+
+  seatCalls = 0
+  runningOf({ sessionId: 's', useSession: seat })
+  assert.equal(seatCalls, 1, 'the seat branch must call the hook exactly once')
+
+  seatCalls = 0
+  runningOf({})
+  assert.equal(seatCalls, 0, 'no seat means no hook call')
 })
 
 // ---- Hardening: locale key parity (C10) ----

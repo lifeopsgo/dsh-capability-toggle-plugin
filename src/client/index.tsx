@@ -29,14 +29,15 @@ import type {
 import { fetchState, writeState, writeStateMany } from './api.ts'
 import { Panel } from './components.tsx'
 import { NS, dictionaries } from './locales.ts'
+import { runningOf, sessionIdOf } from './session.ts'
 import { injectStyles } from './styles.ts'
 import type { ClientContext, InputZoneProps } from './types.ts'
 
 /** The always-visible control: a button that toggles the popup. */
 function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
-  const { session, t } = props
-  const sessionId = session.sessionId
-  const running = session.running
+  const { t } = props
+  const sessionId = sessionIdOf(props)
+  const running = runningOf(props)
   const [open, setOpen] = useState(false)
   const [projection, setProjection] = useState<CapabilityToggleProjection | null>(null)
   const [loading, setLoading] = useState(false)

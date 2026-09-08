@@ -48,19 +48,25 @@ export interface SlotSpec {
   readonly locale?: string
 }
 
+export interface SessionSnapshot {
+  readonly sessionId?: string
+  readonly running?: boolean
+}
+
 /**
- * The subset of the `conversation.input.left` owner share this plugin reads.
- * The runtime passes the whole conversation snapshot; only `running` and the
- * session identity matter here.
+ * The subset of the `conversation.input.left` share this plugin reads, across
+ * both owner-share eras. DSH 0.1.1 passed a `session` snapshot object in the
+ * owner share; DSH 0.1.2+ passes an empty owner share and injects the session id
+ * as a direct prop with live fields behind the `useSession` selector seat. All
+ * three are optional so one build compiles and runs against either host.
  */
 export interface InputZoneProps {
-  /** Point-in-time conversation snapshot; re-passed on every input/session change. */
-  readonly session: {
-    /** The session id — the key the Host HTTP routes address. */
-    readonly sessionId: string
-    /** Whether the agent is mid-turn; the toggles are read-only while true. */
-    readonly running: boolean
+  readonly session?: {
+    readonly sessionId?: string
+    readonly running?: boolean
   }
+  readonly sessionId?: string
+  readonly useSession?: <T>(selector: (snapshot: SessionSnapshot) => T) => T
   /** The translator bound from the registered `locale` namespace. */
   readonly t: Translate
 }

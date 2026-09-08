@@ -4,6 +4,47 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-09-08
+
+### Fixed
+
+- The composer control crashed on DSH 0.1.2 and later. The `conversation.input.left`
+  slot's owner share stopped carrying a `session` snapshot object (the owner now
+  renders the slot with an empty share), and the session identity moved to the
+  framework's standard props: a plain `sessionId` plus a `useSession` selector hook.
+  Every release up to and including v1.2.0 read `props.session.sessionId`
+  unconditionally, so mounting the control threw a `TypeError` and took the whole
+  composer down. Both reads now go through `sessionIdOf` / `runningOf`, which take
+  the legacy snapshot when a host supplies one and the framework seats otherwise, so
+  one build serves 0.1.1 through 0.1.3. **v1.2.0 is broken on DSH 0.1.2; upgrade to
+  this release.**
+- The declared `@deepseek-ai/dsh-*` peer ranges rejected the prereleases people
+  actually install. `>=0.1.1-rc.0 <0.2.0-0` looks like it spans 0.1.x, but semver
+  admits a prerelease only when a comparator names a prerelease of the *same*
+  `major.minor.patch` tuple — so `0.1.2-rc.1` (npm's `next`) and `0.1.3-alpha.x`
+  (npm's `alpha`) both failed to satisfy it, and a host on either would warn or
+  refuse the install. Each tuple now has its own `>=0.1.N-0` anchor, which admits
+  `0.1.2-rc.1`, `0.1.3-alpha.1`, and `0.1.3-alpha.2` while still rejecting
+  everything at or above `0.2.0`.
+
+### Removed
+
+- `@deepseek-ai/dsh-client-runtime`, from `dsh.client.inject`, `peerDependencies`,
+  and `devDependencies`. No source file imports it, and the package no longer exists
+  in current DSH — it had been deleted upstream, so declaring it made installs
+  resolve a stale copy and named a module the host no longer ships.
+- Two dead entries from the client build's platform-module table
+  (`@deepseek-ai/dsh-client-web-react`, `@deepseek-ai/dsh-client-schema-form`). Both
+  packages are gone from current DSH and no source file requests them, so listing
+  them only risked a loader-table mismatch. The emitted `lib/client.js` is
+  byte-identical before and after the removal.
+
+### Install
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.1
+```
+
 ## [1.2.0] - 2026-09-08
 
 ### Added
@@ -168,6 +209,7 @@ Host and client bundles are byte-identical.
 dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
 ```
 
+[1.2.1]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.2.1
 [1.2.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.2.0
 [1.1.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.1.0
 [1.0.3]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.3

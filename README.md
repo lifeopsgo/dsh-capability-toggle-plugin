@@ -5,7 +5,7 @@
 **Control agent capabilities from the DSH WebUI — with real runtime enforcement.**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#quick-start)
-![tests](https://img.shields.io/badge/tests-135%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-149%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -21,12 +21,28 @@
 
 A **DeepSeek Harness (DSH) WebUI** plugin for controlling **skills, MCP servers, tools, prompt injections, approval escalation, and safety guards** at session, project, or global scope. Depending on the family, disabling removes, suppresses, rejects, or intercepts the capability on the agent's next step.
 
+## Compatible DSH versions
+
+One build serves the whole 0.1.x line. The composer slot's owner share changed at
+DSH 0.1.2 — the `session` snapshot object was dropped in favor of the framework's
+`sessionId` prop and `useSession` hook — and this plugin reads both shapes.
+
+| DSH version | Status | How it was checked |
+| --- | --- | --- |
+| 0.1.1-rc.2 | supported | unit tests, typecheck, build, and a real browser session (panel rendered, toggles written) |
+| 0.1.2-rc.1 | supported | unit tests, typecheck (Host and Client faces), and a load check against an installed 0.1.2 host; the browser run above was on 0.1.1 only |
+| 0.1.3-alpha.1 / -alpha.2 | supported | every DSH symbol this plugin consumes was diffed from 0.1.2-rc.1 to current HEAD and is unchanged; not built or run against an installed 0.1.3 host |
+
+The declared `peerDependencies` admit all of the above, including the prereleases
+npm publishes as `next` (0.1.2-rc.1) and `alpha` (0.1.3-alpha.x), and reject
+0.2.0 and later.
+
 ## Quick start
 
 Requires **Node.js ≥ 22.6**.
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.1
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -42,7 +58,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.1
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin

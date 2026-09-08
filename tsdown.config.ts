@@ -21,8 +21,7 @@ const PLUGIN_ID = 'dsh-capability-toggle-plugin'
 
 /**
  * Browser platform modules answered by the loader's frozen require table,
- * mirrored from the harness's PLATFORM_MODULES plus the documented
- * dsh-client-runtime/client store exemption. A require the table cannot
+ * mirrored from the harness's PLATFORM_MODULES. A require the table cannot
  * answer is a guaranteed runtime throw, so anything NOT listed here must
  * inline into the bundle instead.
  */
@@ -33,11 +32,8 @@ const CLIENT_EXTERNALS: readonly string[] = [
   'react-dom/client',
   '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-web-react',
   '@deepseek-ai/dsh-client-ui-primitives',
   '@deepseek-ai/dsh-client-ui-attachment',
-  '@deepseek-ai/dsh-client-schema-form',
-  '@deepseek-ai/dsh-client-runtime/client',
 ]
 
 const NODE_ENV = process.env.NODE_ENV ?? 'production'

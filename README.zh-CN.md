@@ -5,7 +5,7 @@
 **在 DSH WebUI 中控制 agent 能力，并在运行时真正强制执行。**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#快速开始)
-![tests](https://img.shields.io/badge/tests-135%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-149%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -23,10 +23,25 @@
 
 停用不是界面上的假过滤：能力会在模型下一步从可见能力面中消失，强行调用也会在执行时被拦截。
 
+## 兼容的 DSH 版本
+
+一份构建同时服务整个 0.1.x 系列。DSH 0.1.2 改动了输入栏插槽的 owner 参数——不再传
+`session` 快照对象，改为框架标准的 `sessionId` 属性与 `useSession` hook——本插件两种
+形态都能读取。
+
+| DSH 版本 | 状态 | 验证方式 |
+| --- | --- | --- |
+| 0.1.1-rc.2 | 支持 | 单元测试、类型检查、构建，以及真实浏览器会话（面板渲染、开关写入） |
+| 0.1.2-rc.1 | 支持 | 单元测试、类型检查（Host 与 Client 两个编译面）、对已安装 0.1.2 宿主的加载检查；上述浏览器验证仅在 0.1.1 上做过 |
+| 0.1.3-alpha.1 / -alpha.2 | 支持 | 本插件消费的每个 DSH 符号都已从 0.1.2-rc.1 逐一对比到当前 HEAD，均未变化；未在已安装的 0.1.3 宿主上构建或运行 |
+
+声明的 `peerDependencies` 接纳以上全部版本，包括 npm 以 `next`（0.1.2-rc.1）和
+`alpha`（0.1.3-alpha.x）发布的预发布版，并拒绝 0.2.0 及以后。
+
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.1
 dsh --profile web web
 ```
 
@@ -37,7 +52,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.1
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin
