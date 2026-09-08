@@ -282,13 +282,27 @@ function Row(props: {
             >
               <span className="dshct-caret" data-open={expanded} aria-hidden="true">▸</span>
               <span className="dshct-dot" data-off={dotOff} aria-hidden="true" />
-              <span>{displayName}</span>
+              <span className="dshct-row-text">{displayName}</span>
+              {row.callCount !== undefined && row.callCount > 0
+                ? (
+                  <span className="dshct-usage" title={t('usage.calls.title', { count: row.callCount })}>
+                    {t('usage.calls', { count: row.callCount })}
+                  </span>
+                )
+                : null}
             </button>
           )
           : (
             <div className="dshct-row-name">
               <span className="dshct-dot" data-off={dotOff} aria-hidden="true" />
-              <span title={displayName}>{displayName}</span>
+              <span className="dshct-row-text" title={displayName}>{displayName}</span>
+              {row.callCount !== undefined && row.callCount > 0
+                ? (
+                  <span className="dshct-usage" title={t('usage.calls.title', { count: row.callCount })}>
+                    {t('usage.calls', { count: row.callCount })}
+                  </span>
+                )
+                : null}
             </div>
           )}
         {LEVELS.map(level => (

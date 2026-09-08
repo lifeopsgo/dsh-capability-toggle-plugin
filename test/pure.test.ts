@@ -18,11 +18,13 @@ import {
   GUARD_IDS, applyGuards, collectGuards, evaluateGuards, guardId,
 } from '../src/host/guards.ts'
 import {
-  deniedToolNames, disabledSkillNames, disabledToolGuidanceSections,
+  deniedToolNames, disabledSkillNames, disabledToolGuidanceSections, attributeCall,
 } from '../src/host/inventory.ts'
 import { applyPromptGates, collectPromptGates } from '../src/host/prompt.ts'
+import { applyCallStats } from '../src/host/stats.ts'
 import { APPROVAL_GATE_ID, applyApprovalGate, collectApprovalGate } from '../src/host/approval.ts'
-import { writeMap } from '../src/host/store.ts'
+import { OverrideStore, writeMap } from '../src/host/store.ts'
+import { SETTINGS_NAMESPACE, StoredDocumentSchema } from '../src/host/config.ts'
 import { parseSetBody, parseSetManyBody } from '../src/host/http.ts'
 import { SCOPE_IDENTITY_DRIFT_KEY, scopeIdentityDrift } from '../src/host/self-check.ts'
 import type { LayeredOverrides, CapabilityDescriptor } from '../src/shared/types.ts'
@@ -276,6 +278,49 @@ test('writeMap does not mutate its input', () => {
   const out = writeMap(input, 'tool:y', 'on')
   assert.deepEqual(input, { 'tool:x': 'off' })
   assert.deepEqual(out, { 'tool:x': 'off', 'tool:y': 'on' })
+})
+
+// --- DSH version compatibility: the settings-namespace registration seam ------
+
+test('store.ts does not import the settingsNamespace factory removed in DSH 0.1.2', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/host/store.ts', import.meta.url), 'utf8')
+  // DSH 0.1.2 dropped the exported `settingsNamespace()` branding factory; an
+  // ESM named import of a removed export fails at module link time, taking down
+  // the whole Host bundle (and collapsing this test file to its importable subset).
+  assert.ok(
+    !/import\s*{[^}]*\bsettingsNamespace\b[^}]*}\s*from\s*'@deepseek-ai\/dsh-settings'/.test(src),
+    'store.ts still named-imports settingsNamespace — removed in DSH 0.1.2; register the namespace as a plain string',
+  )
+})
+
+test('OverrideStore registers its namespace by passing the plain string to settings.register', () => {
+  // Both DSH 0.1.1 (ns: branded SettingsNamespace) and 0.1.2 (ns: literal-typed
+  // string, self-validating) treat the namespace as a plain string at runtime —
+  // the old factory was a compile-time brand only (it returned its argument).
+  // Passing SETTINGS_NAMESPACE unchanged is therefore correct on both.
+  const calls: unknown[][] = []
+  const ctx = {
+    settings: {
+      register(...args: unknown[]) {
+        calls.push(args)
+        return {
+          get: () => ({ global: {}, projects: {}, sessions: {} }),
+          watch: () => () => {},
+          update: async () => {},
+          replace: async () => {},
+        }
+      },
+    },
+  }
+  new OverrideStore(ctx as never)
+  // DSH 0.1.2's register() self-validates the namespace against this pattern
+  // and throws TypeError on a miss, so the constant must stay a lowercase
+  // hyphenated identifier even though 0.1.1 only checked it in the old factory.
+  assert.match(SETTINGS_NAMESPACE, /^[a-z][a-z0-9-]*$/)
+  assert.equal(calls.length, 1, 'settings.register must be called exactly once')
+  assert.equal(calls[0]?.[0], SETTINGS_NAMESPACE, 'namespace must be passed as the plain string')
+  assert.equal(calls[0]?.[1], StoredDocumentSchema, 'schema must be the stored-document schema')
 })
 
 // --- collectPromptGates probe (H4) ------------------------------------------
@@ -738,6 +783,226 @@ test('applyGuards listener passes a non-matching call through via next()', async
   assert.equal((decision as { kind: string }).kind, 'allow')
 })
 
+// ---- call-usage stats: the tools/result observation seam ----
+
+/**
+ * Fake scoped context for applyCallStats: records the `tools/result` listener
+ * registration and exposes it for direct calling. The event is emit-mode, so
+ * the listener takes (exec, result) and is handed NO next() — unlike the
+ * pre-execute waterfall the guard fake models.
+ */
+function fakeStatsCtx(): {
+  ctx: Parameters<typeof applyCallStats>[0]
+  events: string[]
+  listener: ((exec: unknown, result: unknown) => void) | null
+  disposed: () => number
+} {
+  const rec: { events: string[]; listener: ((exec: unknown, result: unknown) => void) | null; disposals: number } = {
+    events: [], listener: null, disposals: 0,
+  }
+  const ctx = {
+    on: (event: string, listener: (exec: unknown, result: unknown) => void) => {
+      rec.events.push(event)
+      rec.listener = listener
+      return () => { rec.disposals += 1 }
+    },
+  }
+  return {
+    ctx: ctx as unknown as Parameters<typeof applyCallStats>[0],
+    get events() { return rec.events },
+    get listener() { return rec.listener },
+    get disposed() { return () => rec.disposals },
+  }
+}
+
+test('applyCallStats installs exactly one tools/result listener', () => {
+  const f = fakeStatsCtx()
+  const dispose = applyCallStats(f.ctx, () => {})
+  assert.deepEqual(f.events, ['tools/result'])
+  assert.equal(typeof dispose, 'function')
+  dispose()
+  assert.equal(f.disposed(), 1)
+})
+
+test('applyCallStats credits a plain tool call through attributeCall', () => {
+  const f = fakeStatsCtx()
+  const seen: string[] = []
+  applyCallStats(f.ctx, id => seen.push(id))
+  f.listener!({ name: 'bash', arguments: {} }, { isError: false })
+  assert.deepEqual(seen, ['tool:bash'])
+})
+
+test('applyCallStats credits the named skill, not the skill loader tool', () => {
+  const f = fakeStatsCtx()
+  const seen: string[] = []
+  applyCallStats(f.ctx, id => seen.push(id))
+  f.listener!({ name: 'skill', arguments: { name: 'research' } }, { isError: false })
+  assert.deepEqual(seen, ['skill:research'])
+})
+
+test('applyCallStats credits an MCP member call to its server group', () => {
+  const f = fakeStatsCtx()
+  const seen: string[] = []
+  applyCallStats(f.ctx, id => seen.push(id))
+  f.listener!({ name: 'mcp__github__list_repos', arguments: {} }, { isError: false })
+  assert.deepEqual(seen, ['mcp:github'])
+})
+
+test('applyCallStats reports nothing for an unattributable call', () => {
+  const f = fakeStatsCtx()
+  const seen: string[] = []
+  applyCallStats(f.ctx, id => seen.push(id))
+  // A skill loader call with no usable name attributes to nothing (see
+  // attributeCall); the seam must stay silent rather than invent an id.
+  f.listener!({ name: 'skill', arguments: {} }, { isError: false })
+  assert.deepEqual(seen, [])
+})
+
+test('applyCallStats counts a denied/failed call, since the model still asked', () => {
+  const f = fakeStatsCtx()
+  const seen: string[] = []
+  applyCallStats(f.ctx, id => seen.push(id))
+  // tools/result fires for denials too (a pre-execute deny materializes a
+  // final-result, which still reaches notifyResult), so the tally reads as
+  // "times the model asked for this", not "times it ran successfully".
+  f.listener!({ name: 'bash', arguments: {} }, { isError: true })
+  f.listener!({ name: 'bash', arguments: {} }, { isError: false })
+  assert.deepEqual(seen, ['tool:bash', 'tool:bash'])
+})
+
+test('applyCallStats accumulates repeat calls on one id', () => {
+  const f = fakeStatsCtx()
+  const counts = new Map<string, number>()
+  applyCallStats(f.ctx, (id) => { counts.set(id, (counts.get(id) ?? 0) + 1) })
+  f.listener!({ name: 'bash', arguments: {} }, { isError: false })
+  f.listener!({ name: 'grep', arguments: {} }, { isError: false })
+  f.listener!({ name: 'bash', arguments: {} }, { isError: false })
+  assert.equal(counts.get('tool:bash'), 2)
+  assert.equal(counts.get('tool:grep'), 1)
+})
+
+test('applyCallStats never lets a throwing tally escape the listener', () => {
+  const f = fakeStatsCtx()
+  // Telemetry must not become a failure channel: a throwing sink is contained,
+  // mirroring the guard seam's hit-counter discipline.
+  applyCallStats(f.ctx, () => { throw new Error('sink blew up') })
+  assert.doesNotThrow(() => f.listener!({ name: 'bash', arguments: {} }, { isError: false }))
+})
+
+test('applyCallStats tolerates a malformed exec without throwing', () => {
+  const f = fakeStatsCtx()
+  const seen: string[] = []
+  applyCallStats(f.ctx, id => seen.push(id))
+  // exec.arguments may expose a throwing getter and exec.name may be absent on
+  // a drifted framework shape; the observer degrades to silence, never a throw.
+  const hostile = { name: 'bash', arguments: { get name() { throw new Error('hostile getter') } } }
+  assert.doesNotThrow(() => f.listener!(hostile, { isError: false }))
+  assert.deepEqual(seen, ['tool:bash'])
+  assert.doesNotThrow(() => f.listener!({}, { isError: false }))
+  assert.doesNotThrow(() => f.listener!(null, { isError: false }))
+})
+
+// ---- usage badge: rendering gate on the client ----
+
+test('the usage badge renders only for a counted call, never for zero', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/client/components.tsx', import.meta.url), 'utf8')
+  // The badge must be gated on a positive count so an idle row shows no "called
+  // 0" noise — matching the guard badge, which only swaps in "matched N" above
+  // zero. Asserting the gate (not just the locale key) keeps a later refactor
+  // from rendering the badge unconditionally.
+  assert.match(src, /row\.callCount !== undefined && row\.callCount > 0/)
+  assert.match(src, /t\('usage\.calls', \{ count: row\.callCount \}\)/)
+  assert.match(src, /t\('usage\.calls\.title', \{ count: row\.callCount \}\)/)
+})
+
+test('the usage badge stays off guard rows, which report hitCount instead', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/client/components.tsx', import.meta.url), 'utf8')
+  // A guard is matched against, not invoked, so its family already has a
+  // counter. The usage badge lives in the non-guard branch only.
+  const guardBranch = src.slice(src.indexOf('dshct-badge-guard'), src.indexOf('dshct-row-desc'))
+  assert.ok(guardBranch.length > 0, 'guard badge branch not found')
+  assert.ok(!guardBranch.includes('usage.calls'), 'guard badge must not render a usage count')
+})
+
+test('the name text keeps its ellipsis selector after the usage badge joins the cell', async () => {
+  const { readFileSync } = await import('node:fs')
+  const styles = readFileSync(new URL('../src/client/styles.ts', import.meta.url), 'utf8')
+  const src = readFileSync(new URL('../src/client/components.tsx', import.meta.url), 'utf8')
+  // The ellipsis rule targeted `>span:last-child`, which WAS the name text. A
+  // badge appended after it would steal `:last-child` and silently drop the
+  // name's truncation, so the text now carries an explicit class on both sides.
+  assert.match(styles, /\.dshct-row-text\{min-width:0;overflow:hidden;text-overflow:ellipsis/)
+  assert.ok(!styles.includes('.dshct-row-name>span:last-child'), 'stale :last-child selector remains')
+  assert.equal(src.split('className="dshct-row-text"').length - 1, 2, 'both name renders need the class')
+})
+
+test('the stylesheet module still parses and ships the usage badge rule', async () => {
+  // The sibling tests above read styles.ts as TEXT, which keeps passing even
+  // when the CSS template literal no longer parses: the stylesheet is one big
+  // template string, so a stray backtick inside a CSS comment truncates it and
+  // breaks the module while every text assertion still matches. Importing the
+  // module is what makes that failure loud — the import itself fails to link.
+  const styles = await import('../src/client/styles.ts')
+  assert.equal(typeof styles.injectStyles, 'function')
+  // No DOM under node --test, so injecting is a safe no-op that still proves the
+  // module body ran (its CSS constant is built at import time).
+  const dispose = styles.injectStyles()
+  assert.equal(typeof dispose, 'function')
+  dispose()
+})
+
+// ---- stats wiring: asserted against the shipped bundle ----
+// The three facts below live only in AgentBinding, which Node's strip-only type
+// stripping rejects (constructor parameter properties), so they are checked
+// against lib/ — the code a git-tag install actually runs. Same reasoning as
+// test/scope-identity-wiring.test.ts.
+
+test('the shipped bundle gates the stats listener on a real scope', async () => {
+  const { readFileSync } = await import('node:fs')
+  const built = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8')
+  // tools/result routes by exec.agent. A listener on the GLOBAL layer would
+  // receive every agent's calls and pollute this session's tally with other
+  // agents' usage, so the scope gate is a correctness requirement. Assert it
+  // sits INSIDE installCallStats, guarding the applyCallStats call it protects.
+  const start = built.indexOf('installCallStats() {')
+  const end = built.indexOf('projection(descriptors)')
+  assert.ok(start !== -1 && end > start, 'installCallStats body not found in the shipped bundle')
+  const body = built.slice(start, end)
+  assert.match(body, /this\.scopeKey === void 0\) return/)
+  assert.match(body, /applyCallStats\(this\.scopedCtx/)
+})
+
+test('the shipped bundle installs stats before reconcile awaits', async () => {
+  const { readFileSync } = await import('node:fs')
+  const built = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8')
+  // Installing after the first await would miss calls made while the pristine
+  // inventory loads, so both installs must run in reconcile's synchronous head.
+  const start = built.indexOf('async reconcile()')
+  const end = built.indexOf('pristineInventory()', start)
+  assert.ok(start !== -1 && end > start, 'reconcile body not found in the shipped bundle')
+  const head = built.slice(start, end)
+  assert.ok(head.includes('this.installGuards()'), 'guard install missing from reconcile')
+  assert.ok(head.includes('this.installCallStats()'), 'stats install missing from reconcile')
+  assert.ok(head.indexOf('this.installCallStats()') < head.indexOf('await'),
+    'stats install must run before reconcile awaits')
+})
+
+test('the shipped bundle feeds the call tally into the projection', async () => {
+  const { readFileSync } = await import('node:fs')
+  const built = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8')
+  // Without this argument the tally is collected but never rendered: every row
+  // reads the absent-map zero and the badge never appears. The `this.` prefixes
+  // pin the CALL SITE — buildProjection's own definition names the same two
+  // parameters without them, and a lazy wildcard would happily span from one to
+  // the other and pass on nothing.
+  assert.ok(
+    built.includes('this.guardHits, this.callHits)'),
+    'the projection call must pass both tallies, guard hits then call hits',
+  )
+})
+
 // ---- Hardening: locale key parity (C10) ----
 
 test('zh and en dictionaries have identical key sets', async () => {
@@ -1100,6 +1365,104 @@ test('buildProjection: empty inventory yields no rows but keeps the projectKey',
   const p = buildProjection([], layered({ 'tool:bash': 'off' }), '')
   assert.deepEqual(p.rows, [])
   assert.equal(p.projectKey, '')
+})
+
+// --- call attribution: one tools/result event -> the switch id it credits ------
+
+test('attributeCall maps a plain tool name to its tool: id', () => {
+  assert.equal(attributeCall('bash', {}), 'tool:bash')
+  assert.equal(attributeCall('grep', undefined), 'tool:grep')
+})
+
+test('attributeCall maps an mcp__server__member name to the mcp: group id', () => {
+  // The inventory groups members by the MCP_NAME capture, so a member call must
+  // credit the SERVER row, not a tool: row that no switch exists for.
+  assert.equal(attributeCall('mcp__github__list_repos', {}), 'mcp:github')
+  assert.equal(attributeCall('mcp__my-server_1__do', {}), 'mcp:my-server_1')
+})
+
+test('attributeCall maps a skill loader call to the named skill row', () => {
+  // Skills load through the single `skill` tool; the skill name rides in
+  // arguments.name (verified against dsh tool-skill's parameter schema).
+  assert.equal(attributeCall('skill', { name: 'research' }), 'skill:research')
+})
+
+test('attributeCall does not credit the skill loader itself as a tool', () => {
+  // The `skill` tool is excluded from the tool inventory (inventory.ts:148), so
+  // a loader call with no usable name must attribute to nothing rather than
+  // minting a `tool:skill` id that no row ever renders.
+  assert.equal(attributeCall('skill', {}), undefined)
+  assert.equal(attributeCall('skill', undefined), undefined)
+  assert.equal(attributeCall('skill', { name: 42 }), undefined)
+  assert.equal(attributeCall('skill', { name: '' }), undefined)
+})
+
+test('attributeCall keys on name only, so a PTC sub-dispatch credits the same row', () => {
+  // A nested (transport sub-dispatch) call carries the same `name` as a
+  // model-direct one, and the `parent` marker never reaches attribution. That is
+  // deliberate: under `mode: 'ptc'` every natively-executed call HAS a parent
+  // (a model-direct native call is denied as UNKNOWN_TOOL), so filtering on
+  // `parent` would zero the whole tally in exactly the mode where calls happen.
+  assert.equal(attributeCall('bash', {}), 'tool:bash')
+  assert.equal(attributeCall('mcp__github__list_repos', {}), 'mcp:github')
+  assert.equal(attributeCall('skill', { name: 'research' }), 'skill:research')
+})
+
+// --- buildProjection: call tally flows onto default-on family rows --------------
+
+test('buildProjection: a supplied call tally lands on tool/skill/mcp rows', () => {
+  const inv: readonly CapabilityDescriptor[] = [
+    { id: 'skill:research', name: 'research', description: 'r', kind: 'skill' },
+    { id: 'tool:bash', name: 'bash', description: 'b', kind: 'tool' },
+    { id: 'mcp:github', name: 'github', description: 'm', kind: 'mcp' },
+  ]
+  const calls = new Map<string, number>([['tool:bash', 3], ['skill:research', 1]])
+  const p = buildProjection(inv, layered(), '/proj', undefined, calls)
+  assert.equal(p.rows.find(r => r.id === 'tool:bash')?.callCount, 3)
+  assert.equal(p.rows.find(r => r.id === 'skill:research')?.callCount, 1)
+  // A row with no recorded call reads zero, never undefined, so the badge has a
+  // stable value to render (and the absence is not mistaken for "not observed").
+  assert.equal(p.rows.find(r => r.id === 'mcp:github')?.callCount, 0)
+})
+
+test('buildProjection: callCount is zero for every row when no tally is supplied', () => {
+  // The no-live-agent fallback (controller.ts) passes no tally; rows must still
+  // carry a defined zero so the wire shape is uniform.
+  const p = buildProjection(projInventory, layered(), '/proj')
+  for (const r of p.rows) {
+    if (r.kind === 'guard') continue
+    assert.equal(r.callCount, 0, r.id)
+  }
+})
+
+test('buildProjection: a guard row keeps hitCount and is not credited a callCount', () => {
+  // Guards are not "invoked" by the model — they match calls. Their own
+  // hitCount tally is the stat for that family; callCount stays off guard rows.
+  const hits = new Map<string, number>([['guard:readonly', 4]])
+  const calls = new Map<string, number>([['guard:readonly', 7], ['tool:bash', 2]])
+  const p = buildProjection(projInventory, layered(), '/proj', hits, calls)
+  const g = p.rows.find(r => r.id === 'guard:readonly')
+  assert.equal(g?.hitCount, 4)
+  assert.equal(g?.callCount, undefined)
+  assert.equal(p.rows.find(r => r.id === 'tool:bash')?.callCount, 2)
+})
+
+test('buildProjection: prompt and approval rows carry no callCount', () => {
+  // Neither family is invoked — a prompt section is assembled, an approval gate
+  // is consulted — so there is no call to count. Leaving callCount undefined
+  // keeps the UI from rendering a meaningless "0 calls" badge on those rows,
+  // and attribution can never mint their ids anyway.
+  const inv: readonly CapabilityDescriptor[] = [
+    { id: 'prompt:persona', name: 'persona', description: 'p', kind: 'prompt' },
+    { id: 'approval:policy', name: 'policy', description: 'a', kind: 'approval' },
+    { id: 'tool:bash', name: 'bash', description: 'b', kind: 'tool' },
+  ]
+  const calls = new Map<string, number>([['prompt:persona', 5], ['approval:policy', 5]])
+  const p = buildProjection(inv, layered(), '/proj', undefined, calls)
+  assert.equal(p.rows.find(r => r.id === 'prompt:persona')?.callCount, undefined)
+  assert.equal(p.rows.find(r => r.id === 'approval:policy')?.callCount, undefined)
+  // The invoked family still counts normally in the same projection.
+  assert.equal(p.rows.find(r => r.id === 'tool:bash')?.callCount, 0)
 })
 
 // --- The no-live-agent fallback CONTRACT, modelled end to end. This is the

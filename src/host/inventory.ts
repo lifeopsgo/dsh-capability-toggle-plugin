@@ -32,6 +32,8 @@ import { collectGuards } from './guards.ts'
 /** Prefix marking an MCP public tool name; capture group 1 is the server. */
 const MCP_NAME = /^mcp__([A-Za-z0-9_-]{1,32})__/
 
+const SKILL_TOOL_NAME = 'skill'
+
 /** Build the `skill:<name>` switch id. */
 export function skillId(name: string): string {
   return `skill:${name}`
@@ -45,6 +47,15 @@ export function mcpId(server: string): string {
 /** Build the `tool:<name>` switch id. */
 export function toolId(name: string): string {
   return `tool:${name}`
+}
+
+export function attributeCall(name: string, args: unknown): string | undefined {
+  if (name === SKILL_TOOL_NAME) {
+    const skillName = (args as { name?: unknown } | null | undefined)?.name
+    return typeof skillName === 'string' && skillName !== '' ? skillId(skillName) : undefined
+  }
+  const mcp = MCP_NAME.exec(name)
+  return mcp !== null ? mcpId(mcp[1] as string) : toolId(name)
 }
 
 /**
@@ -145,7 +156,7 @@ function collectTools(
         + '(DSH tool-schema shape may have changed); that entry is skipped.')
       continue
     }
-    if (schema.name === 'skill') continue
+    if (schema.name === SKILL_TOOL_NAME) continue
     const mcp = MCP_NAME.exec(schema.name)
     if (mcp !== null) {
       const server = mcp[1] as string

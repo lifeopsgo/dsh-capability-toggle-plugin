@@ -8,7 +8,7 @@
  */
 
 import type {
-  CapabilityDescriptor, CapabilityRow, CapabilityToggleProjection,
+  CapabilityDescriptor, CapabilityKind, CapabilityRow, CapabilityToggleProjection,
   LayeredOverrides, OverrideMap, ToggleLevel, ToggleState,
 } from './types.ts'
 
@@ -19,6 +19,8 @@ import type {
  * list is spelled out a second time.
  */
 export const LEVEL_PRIORITY: readonly ToggleLevel[] = ['session', 'project', 'global']
+
+export const CALLABLE_KINDS: readonly CapabilityKind[] = ['skill', 'mcp', 'tool']
 
 /**
  * Read one capability's stance at one level. A stored map omits `inherit`, so a
@@ -113,14 +115,20 @@ export function disabledIds(overrides: LayeredOverrides, ids: readonly string[])
  *
  * A `guard` row is opt-in (default off): its resolved effect is ACTIVE
  * (`isGuardActive`, off fallback) and it carries a hit count. Every other
- * family is default-on: its effect is DISABLED (`isDisabled`, on fallback) and
- * hitCount is inapplicable. Both flags are always present on the wire; only the
- * one matching the kind is meaningful.
+ * family is default-on: its effect is DISABLED (`isDisabled`, on fallback).
+ * The two counters pair up by family: `hitCount` answers "did this safety rule
+ * fire?" and rides only guard rows, while `callCount` answers "how much did the
+ * model actually use this?" and rides only the callable families
+ * ({@link CALLABLE_KINDS}) — `prompt` and `approval` rows are assembled or
+ * consulted rather than called, so they carry neither. Both flags are always
+ * present on the wire; only the one matching the kind is meaningful.
  *
  * @param descriptors - the full (pristine) capability inventory to render.
  * @param overrides - the three level maps resolved for this scope.
  * @param projectKey - the project root the project level binds to (`''` none).
  * @param guardHits - optional per-guard hit tally; absent → 0 for every guard.
+ * @param callHits - optional per-capability call tally; absent → 0 for every
+ *   callable row, the value an idle (no live agent) read reports.
  * @returns the projection the composer panel renders.
  */
 export function buildProjection(
@@ -128,6 +136,7 @@ export function buildProjection(
   overrides: LayeredOverrides,
   projectKey: string,
   guardHits?: ReadonlyMap<string, number>,
+  callHits?: ReadonlyMap<string, number>,
 ): CapabilityToggleProjection {
   const rows: CapabilityRow[] = descriptors.map((d): CapabilityRow => {
     const levels: Record<ToggleLevel, ToggleState> = {
@@ -141,6 +150,9 @@ export function buildProjection(
         disabled: isGuardActive(overrides, d.id),
         hitCount: guardHits?.get(d.id) ?? 0,
       }
+    }
+    if (CALLABLE_KINDS.includes(d.kind)) {
+      return { ...d, levels, disabled: isDisabled(overrides, d.id), callCount: callHits?.get(d.id) ?? 0 }
     }
     return { ...d, levels, disabled: isDisabled(overrides, d.id) }
   })

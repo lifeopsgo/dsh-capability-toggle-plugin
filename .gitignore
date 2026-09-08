@@ -45,6 +45,7 @@ desktop.ini
 CR.txt
 *.local
 tmp/
+.temp/
 .cache/
 
 # Test / coverage artifacts

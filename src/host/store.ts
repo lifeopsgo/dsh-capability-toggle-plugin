@@ -9,8 +9,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
-import type { SettingsScope } from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace, SettingsScope } from '@deepseek-ai/dsh-settings'
 
 import type { LayeredOverrides, OverrideMap, ToggleLevel, ToggleState } from '../shared/types.ts'
 import { LEVEL_PRIORITY } from '../shared/resolve.ts'
@@ -35,7 +34,7 @@ export class OverrideStore {
    */
   constructor(ctx: Context) {
     this.scope = ctx.settings.register(
-      settingsNamespace(SETTINGS_NAMESPACE),
+      SETTINGS_NAMESPACE as SettingsNamespace,
       StoredDocumentSchema,
     )
   }

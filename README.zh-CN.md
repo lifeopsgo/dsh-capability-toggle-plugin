@@ -5,7 +5,7 @@
 **在 DSH WebUI 中控制 agent 能力，并在运行时真正强制执行。**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#快速开始)
-![tests](https://img.shields.io/badge/tests-108%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-135%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -95,6 +95,12 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 | 破坏性 git | 可能丢失历史或工作区内容的 git 命令需确认 |
 | 外网出站 | 网络工具与外连 shell 操作需确认 |
 
+### 用量统计
+
+技能、MCP 服务与工具行会显示一个小徽章，标明本会话模型调用了多少次（「调用 7 次」）。计数在面板打开时于每轮结束后刷新，只存活于单个 agent 生命周期且不持久化——与安全守卫的「命中 N 次」徽章采用同一保留策略。
+
+统计的是**请求次数**而非成功执行次数：被守卫拦截或转确认的调用同样计入，因为「模型想要用这个能力」本身就是值得看见的信号。守卫是被调用匹配而非被调用，因此沿用自己的徽章、不显示用量；提示词与审批行同样不显示。
+
 其他行为：agent 运行时锁定开关；关闭弹窗或跨轮次后状态仍保留；界面语言跟随 WebUI。
 
 ## 规划
@@ -102,6 +108,10 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 以下为规划中、尚未实现：
 
 - **跨项目同步配置** — 从其他项目复制或引用项目级配置，无需逐个项目重新配置。
+- ~~**能力调用统计**~~ — 已实现、未发布：技能、MCP 服务与工具行现在会以徽章显示本会话被模型调用的次数。尚未进入带 tag 的发布版本，故仍列于此、不标注版本号。
+- **分数格式的 tab 计数** — tab 徽章由当前显示的纯总数改为「已启用 / 总数」，一眼看出每族能力的启用比例。安全 tab 需特别注意：guard 复用 `disabled` 字段表示「已激活」，其分子不能沿用默认启用族的统计口径。
+- **可自定义默认项的设置菜单** — 在设置菜单中暴露插件自身的配置项，例如新发现能力的默认状态（当前三层都未设的能力解析为启用，但可选的安全守卫默认不启用）。
+- **只显示已启用 / 只显示已禁用** — 在搜索框旁增加状态过滤（搜索当前只匹配名称与描述）。安全守卫需要与分数计数同样的处理：guard 复用 `disabled` 表示「已激活」，因此「只显示已禁用」不能把实际生效中的守卫列进去。该过滤还会缩小批量操作的作用范围，因为批量作用于当前可见的所有行。
 - ~~**筛选与全选**~~ — 已于 v1.1.0 实现：工具栏搜索框可筛选行，各层级的批量菜单可对当前可见的所有行执行启用/停用/清除。
 - ~~**筛选全选后批量操作**~~ — 已于 v1.1.0 与筛选功能一同交付（搜索缩小范围，批量作用于当前可见行）。
 

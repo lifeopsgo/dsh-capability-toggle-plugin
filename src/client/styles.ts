@@ -116,13 +116,16 @@ const CSS = `
 .dshct-row-top{display:grid;grid-template-columns:1fr ${LEVELS_COLS};align-items:center;gap:0 10px}
 .dshct-row-name{min-width:0;display:flex;align-items:center;gap:7px;overflow:hidden;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600}
 /* the name TEXT only — not every span in the row-name flexbox. A bare
-   .dshct-row-name span selector also hit the status dot and the mcp caret (both
-   spans), forcing sizing onto them and fighting their own rules. Target the last
-   child (the text node) so the dot/caret keep their own. Single-line with
-   ellipsis: the name column now takes all the width the fixed-width switch band
-   leaves, so most names fit on one line; a rare long one truncates and the full
-   text is on the row's title tooltip. */
-.dshct-row-name>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.35}
+   .dshct-row-name span selector also hit the status dot, the mcp caret, and the
+   usage badge (all spans), forcing sizing onto them and fighting their own
+   rules. The text carries an explicit .dshct-row-text class for that reason:
+   it used to be a >span:last-child selector, but appending the usage badge
+   after the name moved :last-child onto the badge and silently dropped the
+   name's truncation. Single-line with ellipsis: the name column now takes all
+   the width the fixed-width switch band leaves, so most names fit on one line;
+   a rare long one truncates and the full text is on the row's title tooltip. */
+.dshct-row-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.35}
+.dshct-usage{flex:none;padding:1px 6px;border-radius:999px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:14px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .dshct-dot{flex:none;width:7px;height:7px;border-radius:50%}
 .dshct-row-name .dshct-dot{margin-top:0}
 .dshct-dot[data-off=false]{background:var(--dsw-alias-state-business-primary)}

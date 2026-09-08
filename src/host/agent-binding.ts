@@ -45,6 +45,7 @@ import {
 import { applyPromptGates } from './prompt.ts'
 import { applyApprovalGate } from './approval.ts'
 import { applyGuards, GUARD_IDS } from './guards.ts'
+import { applyCallStats } from './stats.ts'
 import { SCOPE_IDENTITY_DRIFT_KEY, scopeIdentityDrift } from './self-check.ts'
 import type { OverrideStore } from './store.ts'
 
@@ -111,6 +112,8 @@ export class AgentBinding {
    * can show "blocked N calls" per guard row.
    */
   private readonly guardHits = new Map<string, number>()
+
+  private readonly callHits = new Map<string, number>()
 
   /**
    * @param store - the shared override store.
@@ -205,6 +208,7 @@ export class AgentBinding {
     // safety MUST — be installed without awaiting. A later superseding
     // reconcile disposes this generation first, so latest-wins still holds.
     this.installGuards()
+    this.installCallStats()
 
     const descriptors = await this.pristineInventory()
     if (gen !== this.generation) return
@@ -286,6 +290,13 @@ export class AgentBinding {
     }
   }
 
+  private installCallStats(): void {
+    if (this.scopeKey === undefined) return
+    this.disposers.push(applyCallStats(this.scopedCtx, (id) => {
+      this.callHits.set(id, (this.callHits.get(id) ?? 0) + 1)
+    }))
+  }
+
   /**
    * Build the UI projection for this agent: every capability with its per-level
    * stored stance and resolved disabled flag.
@@ -298,7 +309,7 @@ export class AgentBinding {
     // its live per-agent guard-hit tally; the fallback path has none and reports
     // zero hits.
     const overrides = this.store.layered(this.projectKey, this.sessionKey)
-    return buildProjection(descriptors, overrides, this.projectKey, this.guardHits)
+    return buildProjection(descriptors, overrides, this.projectKey, this.guardHits, this.callHits)
   }
 
   /** The last pristine inventory this binding captured, or null before its first

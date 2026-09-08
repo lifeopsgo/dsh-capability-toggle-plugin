@@ -130,6 +130,7 @@ export interface CapabilityRow extends CapabilityDescriptor {
    * every other kind, and for a guard that has matched nothing yet.
    */
   readonly hitCount?: number
+  readonly callCount?: number
 }
 
 /**
