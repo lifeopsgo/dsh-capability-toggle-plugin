@@ -26,7 +26,7 @@
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.1.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.0
 dsh --profile web web
 ```
 
@@ -37,7 +37,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.1.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.0
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -108,7 +108,7 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 以下为规划中、尚未实现：
 
 - **跨项目同步配置** — 从其他项目复制或引用项目级配置，无需逐个项目重新配置。
-- ~~**能力调用统计**~~ — 已实现、未发布：技能、MCP 服务与工具行现在会以徽章显示本会话被模型调用的次数。尚未进入带 tag 的发布版本，故仍列于此、不标注版本号。
+- ~~**能力调用统计**~~ — 已于 v1.2.0 实现：技能、MCP 服务与工具行会以徽章显示本会话被模型调用的次数。
 - **分数格式的 tab 计数** — tab 徽章由当前显示的纯总数改为「已启用 / 总数」，一眼看出每族能力的启用比例。安全 tab 需特别注意：guard 复用 `disabled` 字段表示「已激活」，其分子不能沿用默认启用族的统计口径。
 - **可自定义默认项的设置菜单** — 在设置菜单中暴露插件自身的配置项，例如新发现能力的默认状态（当前三层都未设的能力解析为启用，但可选的安全守卫默认不启用）。
 - **只显示已启用 / 只显示已禁用** — 在搜索框旁增加状态过滤（搜索当前只匹配名称与描述）。安全守卫需要与分数计数同样的处理：guard 复用 `disabled` 表示「已激活」，因此「只显示已禁用」不能把实际生效中的守卫列进去。该过滤还会缩小批量操作的作用范围，因为批量作用于当前可见的所有行。

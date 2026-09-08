@@ -26,7 +26,7 @@ A **DeepSeek Harness (DSH) WebUI** plugin for controlling **skills, MCP servers,
 Requires **Node.js ≥ 22.6**.
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.1.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.0
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -42,7 +42,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.1.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.0
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -113,7 +113,7 @@ Additional behavior: switches lock while the agent runs, state survives popup cl
 Planned, not yet implemented:
 
 - **Cross-project config sync** — copy or link project-level settings from another project instead of configuring each project from scratch.
-- ~~**Capability invocation stats**~~ — implemented, unreleased: skills, MCP servers, and tools now badge how many times the model called them this session. Not yet in a tagged release, so it is still listed here rather than attributed to a version.
+- ~~**Capability invocation stats**~~ — shipped in v1.2.0: skills, MCP servers, and tools badge how many times the model called them this session.
 - **Fraction-format tab counts** — render each tab's badge as `enabled / total` instead of the bare total it shows today, so the strip reports at a glance how much of each family is active. The security tab needs care: a guard reuses `disabled` to mean ACTIVE, so its numerator cannot reuse the default-on tally.
 - **Settings menu for customizable defaults** — expose the plugin's own options in a settings menu, such as the default stance for newly discovered capabilities (today a capability with all three levels unset resolves to enabled, except the opt-in safety guards, which stay inactive).
 - **Show only enabled / only disabled** — add a state filter next to the search box, which today matches names and descriptions only. Guards need the same care the fraction counts need: a guard reuses `disabled` to mean ACTIVE, so "only disabled" must not list a guard that is actually enforcing. The filter would also narrow what bulk actions apply to, since they act on every currently visible row.

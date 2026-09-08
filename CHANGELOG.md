@@ -4,6 +4,42 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-09-08
+
+### Added
+
+- Capability invocation stats. Skills, MCP servers, and tools now carry a badge
+  showing how many times the model called them this session (`called 7`), with the
+  exact count in the hover tooltip. The tally observes `tools/result`, attributes
+  each call to a row (a `skill` call credits the named skill rather than the loader,
+  and `mcp__server__member` credits the server group), and rides only the callable
+  families — guards keep their own `matched N` badge, and prompt/approval rows show
+  neither. Counts live for one agent's lifetime and are never persisted, matching
+  the retention guards already had.
+
+### Fixed
+
+- Compatibility with DSH 0.1.2. That release removed the `settingsNamespace` factory
+  from `@deepseek-ai/dsh-settings`, and v1.1.0 imported it by name — an ESM named
+  import of a missing export fails at link time, which stopped the plugin from
+  loading at all. The namespace is now passed as a plain string with a type-only
+  import, which works on 0.1.1 and 0.1.2 alike. **v1.1.0 is broken on DSH 0.1.2;
+  upgrade to this release.**
+
+### Changed
+
+- The row name's ellipsis rule moved from a `>span:last-child` selector to an
+  explicit `.dshct-row-text` class. Appending the usage badge after the name moved
+  `:last-child` onto the badge, which would have silently dropped the name's
+  truncation.
+- `.temp/` is now gitignored, so scratch artifacts can no longer reach the repository.
+
+### Install
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.0
+```
+
 ## [1.1.0] - 2026-09-02
 
 ### Added
@@ -132,6 +168,7 @@ Host and client bundles are byte-identical.
 dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
 ```
 
+[1.2.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.2.0
 [1.1.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.1.0
 [1.0.3]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.3
 [1.0.2]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.0.2
