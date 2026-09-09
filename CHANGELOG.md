@@ -4,6 +4,50 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-09-09
+
+### Added
+
+- Fraction-format tab counts. Each tab badge now renders as `enabled / total`
+  (`67/106`) instead of a bare total, so the strip reports at a glance how much of
+  each family is active. The hover tooltip states both numbers in words whether or
+  not the fraction is shown. A guard counts as enabled only while it is ACTIVE: a
+  guard row reuses `disabled` to mean active, the inverse of every default-on
+  family, so a Security tab with the approval gate open and all five guards
+  inactive reads `1/6` rather than `6/6`.
+- A preferences drawer behind a disclosure arrow beside the panel title, holding
+  three display preferences: show the `enabled / total` fraction, show the per-row
+  usage badge, and choose which level columns the grid shows (Session, Session +
+  Project, or all three). Preferences persist in `localStorage`, so they survive
+  page reloads and browser restarts; a throwing or absent storage degrades to the
+  defaults instead of taking the composer down.
+
+### Changed
+
+- Narrowing the level columns is display-only. The three-level resolution keeps
+  running exactly as before, so a hidden project or global override still applies,
+  and each row's badge and level switches still reflect the resolved state — hiding
+  a column cannot hide an effect.
+- The row grid is now driven by CSS variables instead of a build-time template
+  constant. `.dshct-panel` derives its column template from
+  `repeat(var(--dshct-lv-n), var(--dshct-lv-w)) var(--dshct-badge-w)`, and the
+  component sets `--dshct-lv-n` from the visible-level count. This also removes the
+  narrow-screen media query's hardcoded duplicate of the whole template
+  (`grid-template-columns:1fr repeat(3,40px) 42px`): that rule now narrows the two
+  width variables only — and keeps its pre-existing gap and padding overrides — so
+  the column header, row, and toolbar grids stay aligned at any column count.
+- The tab identity set and its tab→kind mapping moved from the component file into
+  `src/client/tabs.ts`, together with the new count and visible-level helpers, so
+  row filtering, the per-tab counts, and the tab strip read one source and cannot
+  drift.
+- Tests went from 149 to 164.
+
+### Install
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.0
+```
+
 ## [1.2.1] - 2026-09-08
 
 ### Fixed
@@ -209,6 +253,7 @@ Host and client bundles are byte-identical.
 dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
 ```
 
+[1.3.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.3.0
 [1.2.1]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.2.1
 [1.2.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.2.0
 [1.1.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.1.0

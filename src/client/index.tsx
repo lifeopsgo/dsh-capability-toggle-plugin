@@ -29,6 +29,8 @@ import type {
 import { fetchState, writeState, writeStateMany } from './api.ts'
 import { Panel } from './components.tsx'
 import { NS, dictionaries } from './locales.ts'
+import { readPrefs, writePrefs } from './prefs.ts'
+import type { PanelPrefs } from './prefs.ts'
 import { runningOf, sessionIdOf } from './session.ts'
 import { injectStyles } from './styles.ts'
 import type { ClientContext, InputZoneProps } from './types.ts'
@@ -41,6 +43,7 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
   const [open, setOpen] = useState(false)
   const [projection, setProjection] = useState<CapabilityToggleProjection | null>(null)
   const [loading, setLoading] = useState(false)
+  const [prefs, setPrefs] = useState<PanelPrefs>(readPrefs)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   const aliveRef = useRef(true)
@@ -143,6 +146,11 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
     })
   }, [sessionId, refresh])
 
+  const onPrefsChange = useCallback((next: PanelPrefs) => {
+    setPrefs(next)
+    writePrefs(next)
+  }, [])
+
   return (
     <div className="dshct-wrap" ref={wrapRef}>
       <button
@@ -178,6 +186,8 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
                     projection={projection}
                     disabled={running}
                     t={t}
+                    prefs={prefs}
+                    onPrefsChange={onPrefsChange}
                     onSet={onSet}
                     onSetMany={onSetMany}
                   />

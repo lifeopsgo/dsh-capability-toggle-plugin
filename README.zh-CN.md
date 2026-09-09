@@ -5,7 +5,7 @@
 **在 DSH WebUI 中控制 agent 能力，并在运行时真正强制执行。**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#快速开始)
-![tests](https://img.shields.io/badge/tests-149%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-164%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -41,7 +41,7 @@
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.0
 dsh --profile web web
 ```
 
@@ -52,7 +52,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.0
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -116,6 +116,20 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 
 统计的是**请求次数**而非成功执行次数：被守卫拦截或转确认的调用同样计入，因为「模型想要用这个能力」本身就是值得看见的信号。守卫是被调用匹配而非被调用，因此沿用自己的徽章、不显示用量；提示词与审批行同样不显示。
 
+### 面板偏好
+
+面板标题旁的折叠箭头展开三个显示偏好，存入 `localStorage`，因此刷新页面与重启浏览器后仍然保留：
+
+| 偏好 | 作用 |
+| :-- | :-- |
+| **标签页显示「启用数 / 总数」** | tab 徽章由纯总数改为分数形式（`67/106`），一眼看出每族能力的启用比例；无论开关与否，悬停提示都以文字给出两个数字。 |
+| **显示调用统计** | 控制上文的每行用量徽章是否显示。 |
+| **显示的层级列** | 将网格收窄为仅会话级、会话级 + 项目级，或三级全显。 |
+
+分数只把**已生效**的守卫计入启用数。guard 行复用同一个 `disabled` 字段表示「已激活」，与其他默认启用族的方向相反——所以审批开关打开、五个守卫都未激活时，安全 tab 显示 `1/6` 而不是 `6/6`。
+
+收窄层级列**只影响显示**：三级优先级解析照常运行，被隐藏的项目级或全局级设定仍然生效。每行的徽章与层级开关始终反映综合解析后的状态——默认启用族显示「生效中/已停用」，守卫显示「守护中/未启用」——因此隐藏一列不会隐藏任何生效影响。名称列会吸收释放出来的宽度；布局由 CSS 变量驱动，因此与窄屏适配保持对齐。
+
 其他行为：agent 运行时锁定开关；关闭弹窗或跨轮次后状态仍保留；界面语言跟随 WebUI。
 
 ## 规划
@@ -124,7 +138,7 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 
 - **跨项目同步配置** — 从其他项目复制或引用项目级配置，无需逐个项目重新配置。
 - ~~**能力调用统计**~~ — 已于 v1.2.0 实现：技能、MCP 服务与工具行会以徽章显示本会话被模型调用的次数。
-- **分数格式的 tab 计数** — tab 徽章由当前显示的纯总数改为「已启用 / 总数」，一眼看出每族能力的启用比例。安全 tab 需特别注意：guard 复用 `disabled` 字段表示「已激活」，其分子不能沿用默认启用族的统计口径。
+- ~~**分数格式的 tab 计数**~~ — 已于 v1.3.0 实现：tab 徽章改为「已启用 / 总数」，面板标题旁的折叠箭头提供三个显示偏好。安全 tab 的 guard 只有已生效才计入分子，其反转的 `disabled` 字段不会虚增启用数。
 - **可自定义默认项的设置菜单** — 在设置菜单中暴露插件自身的配置项，例如新发现能力的默认状态（当前三层都未设的能力解析为启用，但可选的安全守卫默认不启用）。
 - **只显示已启用 / 只显示已禁用** — 在搜索框旁增加状态过滤（搜索当前只匹配名称与描述）。安全守卫需要与分数计数同样的处理：guard 复用 `disabled` 表示「已激活」，因此「只显示已禁用」不能把实际生效中的守卫列进去。该过滤还会缩小批量操作的作用范围，因为批量作用于当前可见的所有行。
 - ~~**筛选与全选**~~ — 已于 v1.1.0 实现：工具栏搜索框可筛选行，各层级的批量菜单可对当前可见的所有行执行启用/停用/清除。

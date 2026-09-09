@@ -15,8 +15,8 @@ import type {
 /**
  * Priority order applied on read: the first level with an explicit stance wins.
  * This is also the display and write order, so it is the single source of truth
- * the store (`WRITABLE_LEVELS`) and the panel (`LEVELS`) both import — no level
- * list is spelled out a second time.
+ * the store (`WRITABLE_LEVELS`) and the panel (`levelsVisible`) both import — no
+ * level list is spelled out a second time.
  */
 export const LEVEL_PRIORITY: readonly ToggleLevel[] = ['session', 'project', 'global']
 

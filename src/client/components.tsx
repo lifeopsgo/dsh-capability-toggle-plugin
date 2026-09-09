@@ -1,48 +1,23 @@
 /**
  * Presentational components for the capability-toggle popup: the three-state
- * `LevelSwitch`, the two-line `Row`, and the tabbed `Panel` body. All are pure
- * (state and fetch live in the control host, ./index.tsx) so they render from
- * props alone and carry no side effects.
+ * `LevelSwitch`, the two-line `Row`, the preferences drawer, and the tabbed
+ * `Panel` body. All render from props alone; the drawer's persistence lives in
+ * the control host (./index.tsx), which reads and writes the stored prefs and
+ * hands the result down.
  *
  * @module dsh-capability-toggle-plugin/client/components
  */
 
 import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 
 import type {
-  CapabilityKind, CapabilityRow, CapabilityToggleProjection, ToggleLevel, ToggleState,
+  CapabilityRow, CapabilityToggleProjection, ToggleLevel, ToggleState,
 } from '../shared/types.ts'
-import { LEVEL_PRIORITY } from '../shared/resolve.ts'
 import type { Translate } from './types.ts'
-
-/**
- * The tab strip's identity set. Four capability families each get their own
- * tab (skills, mcps, tools, prompt gates); the two safety families — the
- * approval lock and the opt-in guard presets — are grouped under one trailing
- * "security" tab, since both are permission/safety controls rather than plain
- * capability switches. So a tab is no longer 1:1 with a `CapabilityKind`.
- */
-type TabId = 'skill' | 'mcp' | 'tool' | 'prompt' | 'security'
-
-/** Tab display order. */
-const TAB_ORDER: readonly TabId[] = ['skill', 'mcp', 'tool', 'prompt', 'security']
-
-/**
- * Which capability kinds each tab shows. Every tab but `security` maps to its
- * single like-named kind; `security` gathers the approval lock and the guard
- * presets. This is the one source of the tab→kind mapping — row filtering, the
- * per-tab counts, and the tab strip all read it, so they cannot drift.
- */
-const TAB_KINDS: Readonly<Record<TabId, readonly CapabilityKind[]>> = {
-  skill: ['skill'],
-  mcp: ['mcp'],
-  tool: ['tool'],
-  prompt: ['prompt'],
-  security: ['approval', 'guard'],
-}
-
-/** The three levels a row exposes, highest priority first (shared source). */
-const LEVELS: readonly ToggleLevel[] = LEVEL_PRIORITY
+import type { PanelPrefs } from './prefs.ts'
+import { LEVEL_SCOPES, TAB_KINDS, TAB_ORDER, levelsVisible, tabCounts } from './tabs.ts'
+import type { LevelScope, TabId } from './tabs.ts'
 
 /**
  * The glyph for one segment state. Tiny inline SVGs (no icon-font dependency),
@@ -248,10 +223,12 @@ function Row(props: {
   readonly row: CapabilityRow
   readonly disabled: boolean
   readonly projectDisabled: boolean
+  readonly visibleLevels: readonly ToggleLevel[]
+  readonly showUsage: boolean
   readonly t: Translate
   readonly onSet: (level: ToggleLevel, id: string, next: ToggleState) => void
 }): JSX.Element {
-  const { row, disabled, projectDisabled, t } = props
+  const { row, disabled, projectDisabled, visibleLevels, showUsage, t } = props
   const [expanded, setExpanded] = useState(false)
   const { name: displayName, desc: displayDesc } = rowDisplayText(row, t)
   const members = row.memberTools ?? []
@@ -283,7 +260,7 @@ function Row(props: {
               <span className="dshct-caret" data-open={expanded} aria-hidden="true">▸</span>
               <span className="dshct-dot" data-off={dotOff} aria-hidden="true" />
               <span className="dshct-row-text">{displayName}</span>
-              {row.callCount !== undefined && row.callCount > 0
+              {showUsage && row.callCount !== undefined && row.callCount > 0
                 ? (
                   <span className="dshct-usage" title={t('usage.calls.title', { count: row.callCount })}>
                     {t('usage.calls', { count: row.callCount })}
@@ -296,7 +273,7 @@ function Row(props: {
             <div className="dshct-row-name">
               <span className="dshct-dot" data-off={dotOff} aria-hidden="true" />
               <span className="dshct-row-text" title={displayName}>{displayName}</span>
-              {row.callCount !== undefined && row.callCount > 0
+              {showUsage && row.callCount !== undefined && row.callCount > 0
                 ? (
                   <span className="dshct-usage" title={t('usage.calls.title', { count: row.callCount })}>
                     {t('usage.calls', { count: row.callCount })}
@@ -305,7 +282,7 @@ function Row(props: {
                 : null}
             </div>
           )}
-        {LEVELS.map(level => (
+        {visibleLevels.map(level => (
           <LevelSwitch
             key={level}
             level={level}
@@ -388,18 +365,21 @@ function rowHaystack(row: CapabilityRow, t: Translate): string {
   return `${name} ${desc}`.toLowerCase()
 }
 
-/** The popup body: tab strip plus the active tab's row list. */
+/** The popup body: tab strip, preferences drawer, and the active tab's row list. */
 export function Panel(props: {
   readonly projection: CapabilityToggleProjection
   readonly disabled: boolean
   readonly t: Translate
+  readonly prefs: PanelPrefs
+  readonly onPrefsChange: (prefs: PanelPrefs) => void
   readonly onSet: (level: ToggleLevel, id: string, next: ToggleState) => void
   readonly onSetMany: (level: ToggleLevel, ids: readonly string[], next: ToggleState) => void
 }): JSX.Element {
-  const { projection, disabled, t } = props
+  const { projection, disabled, t, prefs } = props
   const [tab, setTab] = useState<TabId>('skill')
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [prefsOpen, setPrefsOpen] = useState(false)
   // Which level's bulk dropdown is expanded — one shared slot so opening a
   // second menu collapses the first (null = all closed). Closing on tab or
   // search toggle keeps a stale menu from floating over another tab's rows.
@@ -413,13 +393,7 @@ export function Panel(props: {
   // exactly the prior per-tab list when search is untouched.
   const needle = query.trim().toLowerCase()
   const rows = needle === '' ? tabRows : tabRows.filter(r => rowHaystack(r, t).includes(needle))
-  // Per-TAB counts: sum each tab's kinds. Seed from TAB_ORDER so a tab with zero
-  // rows still shows 0, and read TAB_KINDS so the count matches exactly what the
-  // tab would list (the security tab counts approval + guard together).
-  const counts = Object.fromEntries(TAB_ORDER.map(id => [id, 0])) as Record<TabId, number>
-  for (const r of projection.rows) {
-    for (const id of TAB_ORDER) if (TAB_KINDS[id].includes(r.kind)) counts[id] += 1
-  }
+  const counts = tabCounts(projection.rows)
   // Only default-on families count as "off" here: a guard reuses `disabled` to
   // mean ACTIVE, so counting it would report turning a safety preset ON as a
   // capability being disabled (and light the composer's red count dot). Exclude
@@ -430,15 +404,81 @@ export function Panel(props: {
   // filter), not the whole inventory and not a manual selection — matching the
   // "search narrows, bulk acts on what's shown" contract the toolbar promises.
   const visibleIds = rows.map(r => r.id)
+  const visibleLevels = levelsVisible(prefs.levels)
 
   return (
-    <div className="dshct-panel" role="dialog" aria-label={t('panel.title')}>
+    <div className="dshct-panel" role="dialog" aria-label={t('panel.title')} style={{ '--dshct-lv-n': visibleLevels.length } as CSSProperties}>
       <div className="dshct-header">
         <span className="dshct-title">{t('panel.title')}</span>
-        {offCount > 0
-          ? <span className="dshct-header-sub" data-has={true}>{t('header.off', { count: offCount })}</span>
-          : null}
+        <span className="dshct-header-actions">
+          {offCount > 0
+            ? <span className="dshct-header-sub" data-has={true}>{t('header.off', { count: offCount })}</span>
+            : null}
+          <button
+            type="button"
+            className="dshct-pref-toggle"
+            data-open={prefsOpen}
+            aria-expanded={prefsOpen}
+            aria-label={t('prefs.toggle')}
+            title={t('prefs.toggle')}
+            onClick={() => { setBulkMenu(null); setPrefsOpen(v => !v) }}
+          >
+            <svg className="dshct-pref-caret" width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M4.5 6.25 8 9.75l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </span>
       </div>
+      {prefsOpen
+        ? (
+          <div className="dshct-prefs">
+            <div className="dshct-pref-row">
+              <span className="dshct-pref-text">
+                <span className="dshct-pref-label" id="dshct-pref-fraction">{t('prefs.fraction')}</span>
+                <span className="dshct-pref-hint">{t('prefs.fraction.hint')}</span>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                className="dshct-switch"
+                aria-checked={prefs.showFraction}
+                aria-labelledby="dshct-pref-fraction"
+                onClick={() => props.onPrefsChange({ ...prefs, showFraction: !prefs.showFraction })}
+              />
+            </div>
+            <div className="dshct-pref-row">
+              <span className="dshct-pref-text">
+                <span className="dshct-pref-label" id="dshct-pref-usage">{t('prefs.usage')}</span>
+                <span className="dshct-pref-hint">{t('prefs.usage.hint')}</span>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                className="dshct-switch"
+                aria-checked={prefs.showUsage}
+                aria-labelledby="dshct-pref-usage"
+                onClick={() => props.onPrefsChange({ ...prefs, showUsage: !prefs.showUsage })}
+              />
+            </div>
+            <div className="dshct-pref-row">
+              <span className="dshct-pref-text">
+                <span className="dshct-pref-label" id="dshct-pref-levels">{t('prefs.levels')}</span>
+                <span className="dshct-pref-hint">{t('prefs.levels.hint')}</span>
+              </span>
+              <select
+                className="dshct-pref-select"
+                value={prefs.levels}
+                aria-labelledby="dshct-pref-levels"
+                onChange={e => props.onPrefsChange({ ...prefs, levels: e.target.value as LevelScope })}
+              >
+                {LEVEL_SCOPES.map(scope => (
+                  <option key={scope} value={scope}>{t(`prefs.levels.${scope}`)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )
+        : null}
       <div className="dshct-tabs" role="tablist">
         {TAB_ORDER.map(id => (
           <button
@@ -451,7 +491,13 @@ export function Panel(props: {
             onClick={() => { setBulkMenu(null); setTab(id) }}
           >
             {t(`tab.${id}`)}
-            <span className="dshct-tab-count">{counts[id]}</span>
+            <span
+              className="dshct-tab-count"
+              data-fraction={prefs.showFraction}
+              title={t('tab.count.title', { enabled: counts[id].enabled, total: counts[id].total })}
+            >
+              {prefs.showFraction ? `${counts[id].enabled}/${counts[id].total}` : counts[id].total}
+            </span>
           </button>
         ))}
       </div>
@@ -479,7 +525,7 @@ export function Panel(props: {
           </button>
           <span aria-hidden="true">{t('col.capability')}</span>
         </span>
-        {LEVELS.map(level => (
+        {visibleLevels.map(level => (
           <span key={level} className="dshct-col-lv" aria-hidden="true">{t(`level.${level}`)}</span>
         ))}
         <span className="dshct-col-badge" aria-hidden="true">{t('col.result')}</span>
@@ -496,7 +542,7 @@ export function Panel(props: {
               disabled={disabled}
               onChange={e => setQuery(e.target.value)}
             />
-            {LEVELS.map(level => (
+            {visibleLevels.map(level => (
               <BulkActions
                 key={level}
                 level={level}
@@ -520,6 +566,8 @@ export function Panel(props: {
               row={row}
               disabled={disabled}
               projectDisabled={projectDisabled}
+              visibleLevels={visibleLevels}
+              showUsage={prefs.showUsage}
               t={t}
               onSet={props.onSet}
             />

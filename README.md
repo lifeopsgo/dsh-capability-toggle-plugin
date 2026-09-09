@@ -5,7 +5,7 @@
 **Control agent capabilities from the DSH WebUI — with real runtime enforcement.**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#quick-start)
-![tests](https://img.shields.io/badge/tests-149%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-164%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -42,7 +42,7 @@ npm publishes as `next` (0.1.2-rc.1) and `alpha` (0.1.3-alpha.x), and reject
 Requires **Node.js ≥ 22.6**.
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.0
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -58,7 +58,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.2.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.0
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -122,6 +122,20 @@ Skills, MCP servers, and tools carry a small badge showing how many times the mo
 
 The tally counts **requests**, not successful runs: a call a guard blocked or sent to confirmation still counts, because the model asking for a capability is the signal worth seeing. Guards are matched against rather than called, so they keep their own badge and show no usage count; prompt and approval rows show none either.
 
+### Panel preferences
+
+A disclosure arrow beside the panel title opens three display preferences, stored in `localStorage` so they survive page reloads and restarts:
+
+| Preference | Effect |
+| :-- | :-- |
+| **Show “enabled / total” on tabs** | Renders each tab badge as a fraction (`67/106`) instead of a bare total, so the strip reports how much of each family is active at a glance. The tooltip states both numbers in words either way. |
+| **Show call stats** | Hides or shows the per-row usage badge described above. |
+| **Level columns to show** | Narrows the grid to Session, Session + Project, or all three columns. |
+
+The fraction counts a guard as enabled only while it is **active**. A guard row reuses the same `disabled` field to mean ACTIVE — the inverse of every default-on family — so a Security tab with the approval gate open and all five guards inactive reads `1/6`, not `6/6`.
+
+Narrowing the level columns is **display-only**: the three-level resolution keeps running exactly as before, so a hidden project or global override still applies. Each row's badge and level switches always reflect the resolved state — a default-on family reads `Active`/`Disabled`, a guard reads `Guarding`/`Inactive` — which is why hiding a column cannot hide an effect. The name column absorbs the freed width, and the layout is driven by CSS variables so it stays aligned with the narrow-screen adaptation.
+
 Additional behavior: switches lock while the agent runs, state survives popup close and turn boundaries, and the UI follows the WebUI language.
 
 ## Roadmap
@@ -130,7 +144,7 @@ Planned, not yet implemented:
 
 - **Cross-project config sync** — copy or link project-level settings from another project instead of configuring each project from scratch.
 - ~~**Capability invocation stats**~~ — shipped in v1.2.0: skills, MCP servers, and tools badge how many times the model called them this session.
-- **Fraction-format tab counts** — render each tab's badge as `enabled / total` instead of the bare total it shows today, so the strip reports at a glance how much of each family is active. The security tab needs care: a guard reuses `disabled` to mean ACTIVE, so its numerator cannot reuse the default-on tally.
+- ~~**Fraction-format tab counts**~~ — shipped in v1.3.0: each tab badge renders as `enabled / total`, and the panel's disclosure arrow holds three display preferences. A guard counts as enabled only while active, so its inverted `disabled` flag never inflates the Security numerator.
 - **Settings menu for customizable defaults** — expose the plugin's own options in a settings menu, such as the default stance for newly discovered capabilities (today a capability with all three levels unset resolves to enabled, except the opt-in safety guards, which stay inactive).
 - **Show only enabled / only disabled** — add a state filter next to the search box, which today matches names and descriptions only. Guards need the same care the fraction counts need: a guard reuses `disabled` to mean ACTIVE, so "only disabled" must not list a guard that is actually enforcing. The filter would also narrow what bulk actions apply to, since they act on every currently visible row.
 - ~~**Filter and select-all**~~ — shipped in v1.1.0: the toolbar's search box filters rows, and each level's bulk menu applies enable/disable/clear to every currently visible row.

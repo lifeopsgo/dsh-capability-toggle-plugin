@@ -1316,6 +1316,11 @@ test('every dictionary key is actually referenced by a component (no dead keys)'
     'tab.', 'level.', 'state.', 'prompt.', 'guard.readonly', 'guard.protect-secrets',
     'guard.dangerous-shell', 'guard.no-destructive-git', 'guard.no-network', 'guard.action.',
     'bulk.',
+    // The drawer's level-scope <select> renders t(`prefs.levels.${scope}`), so the
+    // three scope labels are dynamic. Two precise prefixes cover all three
+    // (session also matches session-project) while leaving prefs.levels.hint under
+    // the literal-reference check, rather than blanket-exempting 'prefs.levels.'.
+    'prefs.levels.session', 'prefs.levels.all',
   ]
   const dead = Object.keys(dictionaries.zh).filter((k) => {
     if (src.includes(`'${k}'`) || src.includes(`\`${k}\``)) return false
@@ -1828,4 +1833,214 @@ test('the scope-identity drift key is stable and namespaced', () => {
   // The key dedupes the warn-once sink; changing it silently would re-enable
   // log flooding, so it is pinned here.
   assert.equal(SCOPE_IDENTITY_DRIFT_KEY, 'scope.identity')
+})
+
+test('tabCounts counts a default-on family as enabled when not disabled', async () => {
+  const { tabCounts } = await import('../src/client/tabs.ts')
+  const rows = [
+    { kind: 'skill', id: 'skill:a', disabled: false },
+    { kind: 'skill', id: 'skill:b', disabled: true },
+    { kind: 'skill', id: 'skill:c', disabled: false },
+  ] as any
+  assert.deepEqual(tabCounts(rows).skill, { enabled: 2, total: 3 })
+})
+
+test('tabCounts counts a guard as enabled only when ACTIVE — the inverted wire flag', async () => {
+  const { tabCounts } = await import('../src/client/tabs.ts')
+  // A guard row reuses `disabled` to mean ACTIVE, the opposite of every other
+  // family. Counting guards by `!disabled` would report an inactive safety
+  // preset as an enabled capability — exactly the trap the composer's red
+  // off-count dot already avoids. The fixtures are deliberately UNIFORM (two
+  // guards disabled:true, one disabled:false) so the naive `!disabled` reading
+  // yields enabled=1 instead of 2 and fails: a mixed true/false pair cancels out
+  // under either reading and would not catch the inversion.
+  const rows = [
+    { kind: 'guard', id: 'guard:a', disabled: true },
+    { kind: 'guard', id: 'guard:b', disabled: true },
+    { kind: 'guard', id: 'guard:c', disabled: false },
+  ] as any
+  assert.deepEqual(tabCounts(rows).security, { enabled: 2, total: 3 })
+})
+
+test('tabCounts sums approval and guard into the one security tab without leaking the inversion', async () => {
+  const { tabCounts } = await import('../src/client/tabs.ts')
+  // security is the only tab gathering two kinds, and the two read `disabled`
+  // with OPPOSITE meaning: approval is default-on (disabled=true means OFF)
+  // while guard is default-off (disabled=true means ACTIVE). All three rows
+  // carry disabled:true on purpose — so the correct per-kind reading counts the
+  // two guards as enabled and the approval as NOT enabled (enabled=2), whereas a
+  // single uniform `!disabled` rule would count none of them (enabled=0). That
+  // gap is what proves the inversion stays inside the guard family.
+  const rows = [
+    { kind: 'approval', id: 'approval:gate', disabled: true },
+    { kind: 'guard', id: 'guard:a', disabled: true },
+    { kind: 'guard', id: 'guard:b', disabled: true },
+  ] as any
+  assert.deepEqual(tabCounts(rows).security, { enabled: 2, total: 3 })
+})
+
+test('tabCounts reports 0/0 for a tab with no rows so its badge never vanishes', async () => {
+  const { tabCounts, TAB_ORDER } = await import('../src/client/tabs.ts')
+  const counts = tabCounts([])
+  for (const id of TAB_ORDER) assert.deepEqual(counts[id], { enabled: 0, total: 0 }, `${id} tab`)
+  // A real install commonly has zero MCP servers configured.
+  const rows = [{ kind: 'tool', id: 'tool:a', disabled: false }] as any
+  assert.deepEqual(tabCounts(rows).mcp, { enabled: 0, total: 0 })
+})
+
+test('tabCounts never drops a tab id from its result', async () => {
+  const { tabCounts, TAB_ORDER } = await import('../src/client/tabs.ts')
+  const rows = [{ kind: 'skill', id: 'skill:a', disabled: false }] as any
+  assert.deepEqual(Object.keys(tabCounts(rows)).sort(), [...TAB_ORDER].sort())
+})
+
+test('levelsVisible yields a prefix of the shared priority order', async () => {
+  const { levelsVisible } = await import('../src/client/tabs.ts')
+  const { LEVEL_PRIORITY } = await import('../src/shared/resolve.ts')
+  // Hiding a level is VISUAL only — the three-level resolution must stay intact
+  // so a project-level override keeps applying. Dropping levels from the tail
+  // (lowest priority) rather than the head keeps the highest-priority column
+  // always on screen, which is the one a user acts on most.
+  assert.deepEqual(levelsVisible('session'), ['session'])
+  assert.deepEqual(levelsVisible('session-project'), ['session', 'project'])
+  assert.deepEqual(levelsVisible('all'), ['session', 'project', 'global'])
+  assert.deepEqual(levelsVisible('all'), [...LEVEL_PRIORITY])
+  for (const mode of ['session', 'session-project', 'all'] as const) {
+    const shown = levelsVisible(mode)
+    assert.deepEqual(shown, LEVEL_PRIORITY.slice(0, shown.length), `${mode} keeps priority order`)
+  }
+})
+
+test('readPrefs returns the defaults when nothing is stored', async () => {
+  const { readPrefs, DEFAULT_PREFS } = await import('../src/client/prefs.ts')
+  const empty = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+  assert.deepEqual(readPrefs(empty), DEFAULT_PREFS)
+  // Defaults preserve today's shipped behaviour: usage badges visible, all three
+  // level columns visible.
+  assert.equal(DEFAULT_PREFS.showUsage, true)
+  assert.equal(DEFAULT_PREFS.levels, 'all')
+})
+
+test('readPrefs round-trips what writePrefs stored', async () => {
+  const { readPrefs, writePrefs } = await import('../src/client/prefs.ts')
+  const map = new Map<string, string>()
+  const store = {
+    getItem: (k: string) => map.get(k) ?? null,
+    setItem: (k: string, v: string) => { map.set(k, v) },
+    removeItem: (k: string) => { map.delete(k) },
+  }
+  const next = { showFraction: false, showUsage: false, levels: 'session-project' as const }
+  writePrefs(next, store)
+  assert.deepEqual(readPrefs(store), next)
+})
+
+test('readPrefs falls back to defaults for a value it cannot trust', async () => {
+  const { readPrefs, DEFAULT_PREFS } = await import('../src/client/prefs.ts')
+  // The stored blob outlives the build that wrote it: a user can upgrade or
+  // downgrade the plugin, or another tab can leave a half-written value. An
+  // unrecognised mode or malformed JSON must degrade to the defaults rather
+  // than render a panel with an unknown column set.
+  const cases: string[] = [
+    'not json at all',
+    '{}',
+    '{"showFraction":true}',
+    '{"showFraction":true,"showUsage":true,"levels":"nonsense"}',
+    'null',
+    '[]',
+  ]
+  for (const raw of cases) {
+    const store = { getItem: () => raw, setItem: () => {}, removeItem: () => {} }
+    assert.deepEqual(readPrefs(store), DEFAULT_PREFS, `raw=${raw}`)
+  }
+})
+
+test('prefs survive a storage that is absent or throws', async () => {
+  const { readPrefs, writePrefs, DEFAULT_PREFS } = await import('../src/client/prefs.ts')
+  // Safari private mode and a full quota make localStorage throw on access and
+  // on write. The panel is a convenience surface — a storage failure must never
+  // take the composer down with it.
+  const throwing = {
+    getItem: () => { throw new Error('denied') },
+    setItem: () => { throw new Error('quota') },
+    removeItem: () => { throw new Error('denied') },
+  }
+  assert.deepEqual(readPrefs(throwing), DEFAULT_PREFS)
+  assert.doesNotThrow(() => writePrefs({ ...DEFAULT_PREFS, levels: 'session' }, throwing))
+  assert.deepEqual(readPrefs(undefined), DEFAULT_PREFS)
+  assert.doesNotThrow(() => writePrefs(DEFAULT_PREFS, undefined))
+})
+
+test('the tab badge renders the enabled/total fraction and gates on the pref', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/client/components.tsx', import.meta.url), 'utf8')
+  // counts[id] is now { enabled, total }, not a bare number, so the badge must
+  // destructure both fields. Locking the exact render keeps a future edit from
+  // printing "[object Object]" or silently reverting to a total-only badge.
+  assert.match(src, /counts\[id\]\.enabled/)
+  assert.match(src, /counts\[id\]\.total/)
+  // The fraction is conditional on prefs.showFraction; when off it falls back to
+  // the plain total so the badge never disappears.
+  assert.match(src, /prefs\.showFraction \? `\$\{counts\[id\]\.enabled\}\/\$\{counts\[id\]\.total\}` : counts\[id\]\.total/)
+  // The counts must come from the shared tabCounts helper (one source for the
+  // guard-inversion rule), not a re-derived inline loop.
+  assert.match(src, /const counts = tabCounts\(projection\.rows\)/)
+  assert.ok(!/counts\[id\] \+= 1/.test(src), 'the inline per-tab count loop must be gone (now in tabs.ts)')
+})
+
+test('the usage badge is gated on the showUsage preference', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/client/components.tsx', import.meta.url), 'utf8')
+  // Both the expandable-MCP branch and the plain branch gate the callCount badge
+  // on showUsage, so turning the stat off hides it everywhere, not on one row
+  // shape. Two occurrences = the two branches.
+  const gated = src.match(/showUsage && row\.callCount !== undefined/g) ?? []
+  assert.equal(gated.length, 2, `expected both usage-badge branches gated, found ${gated.length}`)
+  assert.ok(!/\{row\.callCount !== undefined/.test(src), 'an ungated callCount badge must not remain')
+})
+
+test('level columns render from the visible-levels prop, not the full priority list', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/client/components.tsx', import.meta.url), 'utf8')
+  // All three level maps (row switches, column header, bulk toolbar) must iterate
+  // visibleLevels so hiding a level drops its column everywhere consistently.
+  const mapped = src.match(/visibleLevels\.map\(level =>/g) ?? []
+  assert.equal(mapped.length, 3, `expected 3 visibleLevels.map sites, found ${mapped.length}`)
+  assert.ok(!/LEVELS\.map/.test(src), 'the full-priority LEVELS.map must be gone')
+  assert.ok(!/const LEVELS/.test(src), 'LEVELS must not be redefined locally (single source is tabs.ts)')
+  // The panel drives the CSS column count from the visible-levels length so the
+  // grid shrinks with the columns instead of leaving blank tracks.
+  assert.match(src, /--dshct-lv-n': visibleLevels\.length/)
+})
+
+test('the shipped bundle carries the fraction badge and CSS-variable grid, with no stale hardcoded template', async () => {
+  const { readFileSync } = await import('node:fs')
+  const built = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
+  for (const marker of [
+    '--dshct-lv-n', 'repeat(var(--dshct-lv-n)', 'tab.count.title', 'levelsVisible', 'tabCounts',
+    'dshct-prefs', 'dshct-switch', 'prefs.levels.session-project',
+  ]) {
+    assert.ok(built.includes(marker), `shipped lib/client.js is stale: missing "${marker}" — run pnpm build`)
+  }
+  // The build-time-baked constant and its media-query copy must both be gone,
+  // otherwise the column count is frozen at 3 regardless of the drawer setting.
+  for (const stale of ['LEVELS_COLS', 'repeat(3,48px)', 'repeat(3,40px)']) {
+    assert.ok(!built.includes(stale), `shipped lib/client.js still carries stale "${stale}"`)
+  }
+})
+
+test('Panel consumes prefs/onPrefsChange props so index.tsx owns persistence', async () => {
+  const { readFileSync } = await import('node:fs')
+  const panel = readFileSync(new URL('../src/client/components.tsx', import.meta.url), 'utf8')
+  const host = readFileSync(new URL('../src/client/index.tsx', import.meta.url), 'utf8')
+  // The drawer UI lives in components.tsx but persistence in index.tsx, keeping
+  // components side-effect-free. Panel must accept both props and never touch
+  // localStorage itself.
+  assert.match(panel, /readonly prefs: PanelPrefs/)
+  assert.match(panel, /readonly onPrefsChange: \(prefs: PanelPrefs\) => void/)
+  assert.ok(!/localStorage/.test(panel), 'components.tsx must not reach localStorage directly')
+  // The host reads once (lazy init) and writes on change.
+  assert.match(host, /useState<PanelPrefs>\(readPrefs\)/)
+  assert.match(host, /writePrefs\(next\)/)
+  assert.match(host, /prefs=\{prefs\}/)
+  assert.match(host, /onPrefsChange=\{onPrefsChange\}/)
 })
