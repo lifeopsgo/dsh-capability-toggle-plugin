@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] - 2026-09-12
+
+### Fixed
+
+- The search box could be opened but not typed into while an agent was running.
+  The input carried the panel's running lock (`disabled={disabled}`, which
+  `index.tsx` feeds from `running`), yet the disclosure button that reveals it never
+  did, so clicking the magnifier opened a field that ignored every keystroke —
+  greyed out at half opacity. The lock exists because a stance write cannot be
+  applied mid-turn, but search is a local filter over rows already in hand: it never
+  reaches the Host, so it now stays usable, and a projection refresh triggered by
+  the agent finishing keeps the typed query. Every control that does write — each
+  row's per-level switches, their clear badges, and the bulk menus — stays locked
+  exactly as before. **This affected every release from v1.1.0, which introduced the
+  search toolbar, through v1.3.0.**
+
+### Added
+
+- Render-level tests for the popup (`test/panel-render.test.ts`), which mount the
+  real component without a DOM and drive it the way a browser would: the harness
+  refuses to dispatch a user event to a disabled control, so a re-locked search box
+  fails the filtering test instead of passing vacuously. One sentinel test carries no
+  skip guard, so a React major bump that removes the hook dispatcher fails loudly
+  rather than skipping the whole suite green. Tests went from 164 to 173.
+
+### Install
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.1
+```
+
 ## [1.3.0] - 2026-09-09
 
 ### Added
@@ -253,6 +284,7 @@ Host and client bundles are byte-identical.
 dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
 ```
 
+[1.3.1]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.3.1
 [1.3.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.3.0
 [1.2.1]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.2.1
 [1.2.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.2.0

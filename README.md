@@ -5,7 +5,7 @@
 **Control agent capabilities from the DSH WebUI — with real runtime enforcement.**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#quick-start)
-![tests](https://img.shields.io/badge/tests-164%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-173%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -42,7 +42,7 @@ npm publishes as `next` (0.1.2-rc.1) and `alpha` (0.1.3-alpha.x), and reject
 Requires **Node.js ≥ 22.6**.
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.1
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -58,7 +58,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.1
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -136,7 +136,7 @@ The fraction counts a guard as enabled only while it is **active**. A guard row 
 
 Narrowing the level columns is **display-only**: the three-level resolution keeps running exactly as before, so a hidden project or global override still applies. Each row's badge and level switches always reflect the resolved state — a default-on family reads `Active`/`Disabled`, a guard reads `Guarding`/`Inactive` — which is why hiding a column cannot hide an effect. The name column absorbs the freed width, and the layout is driven by CSS variables so it stays aligned with the narrow-screen adaptation.
 
-Additional behavior: switches lock while the agent runs, state survives popup close and turn boundaries, and the UI follows the WebUI language.
+Additional behavior: while the agent runs, the controls that write a stance lock — each row's level switches, their clear badges, and the bulk menus — but browsing stays open, so the search box, the level-column selector, the tabs, and a row's expand still work. State survives popup close and turn boundaries, and the UI follows the WebUI language.
 
 ## Roadmap
 

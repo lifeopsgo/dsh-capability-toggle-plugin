@@ -5,7 +5,7 @@
 **在 DSH WebUI 中控制 agent 能力，并在运行时真正强制执行。**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#快速开始)
-![tests](https://img.shields.io/badge/tests-164%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-173%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -41,7 +41,7 @@
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.1
 dsh --profile web web
 ```
 
@@ -52,7 +52,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.1
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -130,7 +130,7 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 
 收窄层级列**只影响显示**：三级优先级解析照常运行，被隐藏的项目级或全局级设定仍然生效。每行的徽章与层级开关始终反映综合解析后的状态——默认启用族显示「生效中/已停用」，守卫显示「守护中/未启用」——因此隐藏一列不会隐藏任何生效影响。名称列会吸收释放出来的宽度；布局由 CSS 变量驱动，因此与窄屏适配保持对齐。
 
-其他行为：agent 运行时锁定开关；关闭弹窗或跨轮次后状态仍保留；界面语言跟随 WebUI。
+其他行为：agent 运行时，会写入设定的控件锁定——每行的层级开关、其清除徽章、以及批量菜单——但浏览保持可用，因此搜索框、层级列下拉、tab 切换、行展开照常工作；关闭弹窗或跨轮次后状态仍保留；界面语言跟随 WebUI。
 
 ## 规划
 

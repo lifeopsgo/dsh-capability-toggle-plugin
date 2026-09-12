@@ -98,7 +98,6 @@ const CSS = `
 .dshct-search-input{min-width:0;width:100%;height:28px;box-sizing:border-box;padding:0 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:7px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:26px}
 .dshct-search-input::placeholder{color:var(--dsw-alias-label-caption)}
 .dshct-search-input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
-.dshct-search-input:disabled{opacity:.5;cursor:default}
 .dshct-bulk{position:relative;justify-self:center;display:inline-flex;align-items:center}
 .dshct-bulk-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;box-sizing:border-box;padding:0;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:background .14s ease,color .14s ease,border-color .14s ease,box-shadow .14s ease}
 .dshct-bulk-btn svg{width:15px;height:15px;font-size:15px;transition:transform .14s ease}

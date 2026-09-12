@@ -539,7 +539,6 @@ export function Panel(props: {
               value={query}
               placeholder={t('search.placeholder')}
               aria-label={t('search.placeholder')}
-              disabled={disabled}
               onChange={e => setQuery(e.target.value)}
             />
             {visibleLevels.map(level => (
