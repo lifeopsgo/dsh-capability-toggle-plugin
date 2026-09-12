@@ -4,6 +4,52 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.2] - 2026-09-12
+
+### Fixed
+
+- The declared `@deepseek-ai/dsh-*` peer ranges did not admit the 0.1.5
+  prereleases under strict semver. npm now publishes `next` as 0.1.5-rc.2 and
+  `alpha` as 0.1.5-alpha.2, and a prerelease satisfies a range only when some
+  comparator names a prerelease of the *same* `major.minor.patch` tuple — so the
+  highest anchor v1.2.1 shipped (`>=0.1.3-0`) admits 0.1.3-alpha.x but not
+  0.1.5-rc.x. This is the v1.2.1 rule recurring on a tuple that did not exist when
+  any earlier release was cut.
+
+  No install actually broke. Both real installers — pnpm, which `dsh plugin add`
+  shells out to, and npm — resolve peers prerelease-leniently and accepted the old
+  range silently against a real 0.1.5-rc.2 host: `pnpm peers check` reported no
+  issues, and even `pnpm install --strict-peer-dependencies` exited 0, while a
+  deliberately-wrong `^0.2.0` peer on the same host did raise
+  `ERR_PNPM_PEER_DEP_ISSUES`. So this is manifest hygiene, not a bug users hit. A
+  `>=0.1.5-0` anchor now admits the whole 0.1.5 prerelease line, which makes the
+  declared range correct under strict semver — the semantics this repo's own
+  peer-range contract test asserts — and keeps that test green; without the anchor
+  `every DSH peer range admits the prereleases users actually run` fails on
+  0.1.5-rc.2. No `>=0.1.4-0` anchor was added: npm never published a 0.1.4 (the line
+  went 0.1.3 → 0.1.5), so it would admit nothing. 0.2.0 and later stay rejected.
+
+  No code changed: both the Host and Client faces typecheck and build against real
+  0.1.5-rc.2 packages. A symbol-by-symbol diff of every DSH surface this plugin
+  consumes shows seven of the eight byte-identical to 0.1.1 (`createScope`, `scopeOf`,
+  `tools/pre-execute`, `tools/result`, `PreToolDecision`, `ApprovalOutcome`,
+  `session.header.cwd`). The eighth, `approval/request`, did change: its receiver
+  narrowed `Scoped<ApprovalService>` → `Scoped<Agent>` and its payload renamed
+  `ApprovalRequest` → `ApprovalRequestEvent`. Neither change reaches this plugin, for
+  two independent reasons. First, the listener is `() => Promise.resolve('rejected')`
+  and reads neither the receiver nor the payload. Second, and more load-bearing for a
+  safety gate, the dispatch routing is unchanged: `scopeTarget`'s implementation is
+  byte-identical, both versions route on the same key (`req.agent` — only the unused
+  `base` argument moved, from `this` to `req.agent`), and neither base carries a
+  `Context.filter`, so the auto-reject still fires on the same agent-scoped context.
+  The gate keeps auto-rejecting approvals exactly as before.
+
+### Install
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.2
+```
+
 ## [1.3.1] - 2026-09-12
 
 ### Fixed
@@ -284,6 +330,7 @@ Host and client bundles are byte-identical.
 dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
 ```
 
+[1.3.2]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.3.2
 [1.3.1]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.3.1
 [1.3.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.3.0
 [1.2.1]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.2.1

@@ -428,11 +428,13 @@ test('every DSH peer range admits the prereleases users actually run', async () 
   }
   const dshPeers = Object.entries(pkg.peerDependencies).filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
   assert.ok(dshPeers.length >= 10, 'expected the full DSH peer set, got ' + String(dshPeers.length))
-  // 0.1.2-rc.1 and 0.1.3-alpha.2 are the prereleases npm publishes as `next`
-  // and `alpha`, so they are what a host tracks before a stable cut. The range
-  // shipped in v1.1.0 rejected BOTH, and nothing in the suite said so — this
-  // test is the assertion that was missing.
-  const mustAdmit = ['0.1.0-rc.8', '0.1.1-rc.2', '0.1.2-rc.1', '0.1.3-alpha.1', '0.1.3-alpha.2', '0.1.2', '0.1.3']
+  // These are the prereleases npm actually publishes under `next` and `alpha`,
+  // plus the stable cuts: a host tracking either dist-tag lands on one of them.
+  // semver admits a prerelease only when some comparator names its OWN tuple, so
+  // every DSH tuple needs the `>=0.1.N-0` anchor below. v1.1.0's range rejected
+  // the 0.1.2/0.1.3 prereleases (fixed in v1.2.1); the same drift recurred when
+  // the line moved to 0.1.5, so this list grows with each tuple DSH ships.
+  const mustAdmit = ['0.1.0-rc.8', '0.1.1-rc.2', '0.1.2-rc.1', '0.1.3-alpha.1', '0.1.3-alpha.2', '0.1.2', '0.1.3', '0.1.5-alpha.1', '0.1.5-alpha.2', '0.1.5-rc.1', '0.1.5-rc.2', '0.1.5']
   const mustReject = ['0.2.0-rc.1', '0.2.0', '0.1.0-rc.7', '0.0.1-rc.1']
   for (const [name, range] of dshPeers) {
     for (const v of mustAdmit) assert.ok(satisfies(v, range), `${name}@${v} must satisfy ${range}`)

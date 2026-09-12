@@ -34,14 +34,15 @@
 | 0.1.1-rc.2 | 支持 | 单元测试、类型检查、构建，以及真实浏览器会话（面板渲染、开关写入） |
 | 0.1.2-rc.1 | 支持 | 单元测试、类型检查（Host 与 Client 两个编译面）、对已安装 0.1.2 宿主的加载检查；上述浏览器验证仅在 0.1.1 上做过 |
 | 0.1.3-alpha.1 / -alpha.2 | 支持 | 本插件消费的每个 DSH 符号都已从 0.1.2-rc.1 逐一对比到当前 HEAD，均未变化；未在已安装的 0.1.3 宿主上构建或运行 |
+| 0.1.5-alpha.x / -rc.x | 支持 | Host 与 Client 类型检查、构建，以及对真实的 0.1.5-rc.2 包逐一对比本插件消费的每个 DSH 符号：`createScope`/`scopeOf`、`tools/pre-execute`、`tools/result`、`PreToolDecision`、`ApprovalOutcome`、`session.header.cwd` 与 0.1.1 逐字节相同；`approval/request` 的接收者（`Scoped<ApprovalService>` → `Scoped<Agent>`）与载荷名（`ApprovalRequest` → `ApprovalRequestEvent`）有变化，但本插件的监听器两者都不读取，故不受影响。未在已安装的 0.1.5 宿主上运行 |
 
-声明的 `peerDependencies` 接纳以上全部版本，包括 npm 以 `next`（0.1.2-rc.1）和
-`alpha`（0.1.3-alpha.x）发布的预发布版，并拒绝 0.2.0 及以后。
+声明的 `peerDependencies` 接纳以上全部版本，包括 npm 以 `next`（0.1.5-rc.2）和
+`alpha`（0.1.5-alpha.2）发布的预发布版，并拒绝 0.2.0 及以后。
 
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.2
 dsh --profile web web
 ```
 
@@ -52,7 +53,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.2
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin

@@ -32,9 +32,10 @@ DSH 0.1.2 — the `session` snapshot object was dropped in favor of the framewor
 | 0.1.1-rc.2 | supported | unit tests, typecheck, build, and a real browser session (panel rendered, toggles written) |
 | 0.1.2-rc.1 | supported | unit tests, typecheck (Host and Client faces), and a load check against an installed 0.1.2 host; the browser run above was on 0.1.1 only |
 | 0.1.3-alpha.1 / -alpha.2 | supported | every DSH symbol this plugin consumes was diffed from 0.1.2-rc.1 to current HEAD and is unchanged; not built or run against an installed 0.1.3 host |
+| 0.1.5-alpha.x / -rc.x | supported | Host and Client typecheck, build, and a symbol-by-symbol diff of every DSH surface this plugin consumes against real 0.1.5-rc.2 packages: `createScope`/`scopeOf`, `tools/pre-execute`, `tools/result`, `PreToolDecision`, `ApprovalOutcome`, and `session.header.cwd` are byte-identical to 0.1.1; `approval/request` changed its receiver (`Scoped<ApprovalService>` → `Scoped<Agent>`) and payload name (`ApprovalRequest` → `ApprovalRequestEvent`), which does not reach this plugin because its listener reads neither. Not run against an installed 0.1.5 host |
 
 The declared `peerDependencies` admit all of the above, including the prereleases
-npm publishes as `next` (0.1.2-rc.1) and `alpha` (0.1.3-alpha.x), and reject
+npm publishes as `next` (0.1.5-rc.2) and `alpha` (0.1.5-alpha.2), and reject
 0.2.0 and later.
 
 ## Quick start
@@ -42,7 +43,7 @@ npm publishes as `next` (0.1.2-rc.1) and `alpha` (0.1.3-alpha.x), and reject
 Requires **Node.js ≥ 22.6**.
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.2
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -58,7 +59,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.2
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin
