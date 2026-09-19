@@ -5,7 +5,7 @@
 **Control agent capabilities from the DSH WebUI — with real runtime enforcement.**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#quick-start)
-![tests](https://img.shields.io/badge/tests-173%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-197%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -43,7 +43,7 @@ npm publishes as `next` (0.1.5-rc.2) and `alpha` (0.1.5-alpha.2), and reject
 Requires **Node.js ≥ 22.6**.
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.2
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.4.0
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -59,7 +59,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.2
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.4.0
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin

@@ -23,6 +23,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { OverrideStore } from './host/store.ts'
 import { ControllerRegistry } from './host/controller.ts'
 import { installHttp } from './host/http.ts'
+import { ConfirmationCenter } from './host/confirm.ts'
 import { checkRequiredServices, emitContractBanner, makeWarnOnce } from './host/self-check.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -55,9 +56,14 @@ export function apply(ctx: Context): void {
   const onDrift = makeWarnOnce(ctx)
 
   const store = new OverrideStore(ctx)
-  const registry = new ControllerRegistry(store, ctx, onDrift)
+  const center = new ConfirmationCenter()
+  const registry = new ControllerRegistry(store, ctx, center, onDrift)
 
-  ctx.effect(() => installHttp(ctx, store, registry), 'capability-toggle: http routes')
+  ctx.effect(() => installHttp(ctx, store, registry, center), 'capability-toggle: http routes')
+  // Tear the confirmation channel down on unload so no blocked pre-execute call
+  // outlives the plugin: dispose() cancels every pending confirmation (settling
+  // its guard to fail-closed) and ends every open SSE stream.
+  ctx.effect(() => () => center.dispose(), 'capability-toggle: confirmation center')
 
   // A committed change at any level (from any client) re-applies enforcement to
   // every live agent. The observer disposer is returned into the effect.

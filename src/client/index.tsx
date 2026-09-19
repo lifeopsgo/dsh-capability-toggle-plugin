@@ -26,14 +26,26 @@ import type { CSSProperties } from 'react'
 import type {
   CapabilityToggleProjection, ToggleLevel, ToggleState,
 } from '../shared/types.ts'
-import { fetchState, writeState, writeStateMany } from './api.ts'
-import { Panel } from './components.tsx'
+import { fetchState, respondConfirm, subscribeConfirm, writeState, writeStateMany } from './api.ts'
+import { ConfirmationCard, Panel } from './components.tsx'
 import { NS, dictionaries } from './locales.ts'
 import { readPrefs, writePrefs } from './prefs.ts'
 import type { PanelPrefs } from './prefs.ts'
 import { runningOf, sessionIdOf } from './session.ts'
 import { injectStyles } from './styles.ts'
-import type { ClientContext, InputZoneProps } from './types.ts'
+import type { ClientContext, ConfirmCard, ConfirmPush, InputZoneProps } from './types.ts'
+
+interface ConfirmEntry {
+  readonly card: ConfirmCard
+  readonly status: 'idle' | 'busy' | 'retry'
+  readonly attempt?: object
+}
+
+interface ConfirmScope {
+  readonly sessionId: string
+  readonly cards: Map<string, ConfirmEntry>
+  active: boolean
+}
 
 /** The always-visible control: a button that toggles the popup. */
 function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
@@ -151,6 +163,93 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
     writePrefs(next)
   }, [])
 
+  const scopeRef = useRef<ConfirmScope | null>(null)
+  const [, rerender] = useState(0)
+  const [, announceCount] = useState(0)
+
+  const updateScope = useCallback((next: ConfirmScope | null) => {
+    scopeRef.current = next
+    rerender(n => n + 1)
+  }, [])
+
+  const apply = useCallback((cards: Map<string, ConfirmEntry>) => {
+    const scope = scopeRef.current
+    if (scope === null) return
+    updateScope({ sessionId: scope.sessionId, cards, active: scope.active })
+    announceCount(n => n + 1)
+  }, [updateScope])
+
+  const applyRef = useRef(apply)
+  applyRef.current = apply
+
+  useEffect(() => {
+    if (!aliveRef.current || sessionId === '') {
+      scopeRef.current = null
+      rerender(n => n + 1)
+      return
+    }
+    const scope: ConfirmScope = { sessionId, cards: new Map(), active: true }
+    scopeRef.current = scope
+    rerender(n => n + 1)
+    const stop = subscribeConfirm(sessionId, (push: ConfirmPush) => {
+      const current = scopeRef.current
+      if (!current || !current.active) return
+      if (push.kind === 'snapshot') {
+        const next = new Map<string, ConfirmEntry>()
+        for (const card of push.cards) next.set(card.id, { card, status: 'idle' })
+        applyRef.current(next)
+        return
+      }
+      if (push.kind === 'resolved') {
+        const previous = current.cards
+        if (!previous.has(push.id)) return
+        const next = new Map(previous)
+        next.delete(push.id)
+        applyRef.current(next)
+        return
+      }
+      const next = new Map(current.cards)
+      next.set(push.card.id, { card: push.card, status: 'idle' })
+      applyRef.current(next)
+    })
+    return () => { scope.active = false; stop() }
+  }, [sessionId])
+
+  const onAnswer = useCallback((id: string, decision: 'allow' | 'deny') => {
+    const scope = scopeRef.current
+    if (scope === null) return
+    const entry = scope.cards.get(id)
+    if (entry === undefined || entry.status === 'busy') return
+    const attempt = {}
+    const next = new Map(scope.cards)
+    next.set(id, { card: entry.card, status: 'busy', attempt })
+    apply(next)
+    void respondConfirm(scope.sessionId, id, decision).then(outcome => {
+      if (!aliveRef.current) return
+      const currentScope = scopeRef.current
+      if (currentScope === null || currentScope.sessionId !== scope.sessionId) return
+      const current = currentScope.cards.get(id)
+      if (current === undefined) return
+      if (outcome === 'accepted') {
+        const next = new Map(currentScope.cards)
+        next.delete(id)
+        apply(next)
+      } else if (outcome === 'gone') {
+        const next = new Map(currentScope.cards)
+        next.delete(id)
+        apply(next)
+      } else {
+        // For retry cases, update the existing entry to retry status
+        const next = new Map(currentScope.cards)
+        next.set(id, { card: current.card, status: 'retry' })
+        apply(next)
+      }
+    })
+  }, [apply])
+
+  const confirmList = scopeRef.current === null || scopeRef.current.sessionId !== sessionId ? [] : [...scopeRef.current.cards.values()]
+  const pendingCount = confirmList.length
+
   return (
     <div className="dshct-wrap" ref={wrapRef}>
       <button
@@ -195,6 +294,20 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
           </div>
         )
         : null}
+      {confirmList.map(entry => (
+        <ConfirmationCard
+          key={entry.card.id}
+          guardId={entry.card.guardId}
+          guardAction={entry.card.guardAction}
+          reason={entry.card.reason}
+          toolName={entry.card.toolName}
+          detail={entry.card.detail}
+          busy={entry.status === 'busy'}
+          failed={entry.status === 'retry'}
+          t={t}
+          onAnswer={decision => onAnswer(entry.card.id, decision)}
+        />
+      ))}
     </div>
   )
 }

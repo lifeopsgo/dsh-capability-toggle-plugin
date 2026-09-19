@@ -45,6 +45,8 @@ import {
 import { applyPromptGates } from './prompt.ts'
 import { applyApprovalGate } from './approval.ts'
 import { applyGuards, GUARD_IDS } from './guards.ts'
+import { makeGuardConfirmer } from './confirm.ts'
+import type { ConfirmationCenter } from './confirm.ts'
 import { applyCallStats } from './stats.ts'
 import { SCOPE_IDENTITY_DRIFT_KEY, scopeIdentityDrift } from './self-check.ts'
 import type { OverrideStore } from './store.ts'
@@ -119,6 +121,9 @@ export class AgentBinding {
    * @param store - the shared override store.
    * @param hostCtx - this plugin's context (injects `skills` and `tools`).
    * @param agent - the live agent this binding enforces.
+   * @param center - the shared blocking-confirmation registry; guard matches are
+   *   offered to the user through it (optional, so a binding without one keeps
+   *   the legacy deny/ask behavior).
    * @param onDrift - optional warn-once sink for unexpected framework shapes
    *   seen while reading this agent's inventory (threaded to `collectInventory`).
    */
@@ -126,6 +131,7 @@ export class AgentBinding {
     private readonly store: OverrideStore,
     hostCtx: Context,
     private readonly agent: Agent,
+    private readonly center?: ConfirmationCenter,
     private readonly onDrift?: DriftSink,
   ) {
     this.scopeKey = scopeOf(agent.ctx)
@@ -278,14 +284,24 @@ export class AgentBinding {
    * scopeless listener would gate every agent; a scopeless binding installs no
    * guard. A single prepended listener runs the pure matcher and counts each hit
    * on the reconcile-surviving `guardHits` tally.
+   *
+   * When the shared confirmation center is present, every match is additionally
+   * offered to the user over the plugin's own SSE channel and BLOCKS until
+   * answered — independent of the session's approval policy, so a `never`
+   * policy can no longer silently reject an `ask` guard (see host/confirm.ts).
+   * With no browser subscribed for this session the confirmer returns null and
+   * the legacy decision stands, so a headless turn never hangs.
    */
   private installGuards(): void {
     if (this.scopeKey === undefined) return
     const overrides = this.store.layered(this.projectKey, this.sessionKey)
     const activeGuards = new Set(GUARD_IDS.filter(id => isGuardActive(overrides, id)))
+    const confirmer = this.center === undefined
+      ? undefined
+      : makeGuardConfirmer(this.center, this.sessionKey)
     for (const dispose of applyGuards(this.scopedCtx, activeGuards, (id) => {
       this.guardHits.set(id, (this.guardHits.get(id) ?? 0) + 1)
-    })) {
+    }, confirmer)) {
       this.disposers.push(dispose)
     }
   }

@@ -79,12 +79,18 @@ function argStr(args: Record<string, unknown>, key: string): string {
   return typeof v === 'string' ? v : ''
 }
 
+const SHELL_TOOLS = new Set(['bash', 'pwsh'])
+
+const STR_REPLACE_EDITOR = 'str_replace_editor'
+
 /** The file-mutating tool names, denied wholesale by the read-only preset. */
-const FILE_WRITE_TOOLS = new Set(['write', 'create', 'edit', 'str_replace_editor'])
+const FILE_WRITE_TOOLS = new Set(['write', 'edit'])
+
+const EDITOR_READ_COMMANDS = new Set(['view'])
 
 /**
  * Common file-mutating SHELL invocations the read-only preset also blocks, so a
- * `bash` call cannot trivially route around the native file-write tools with
+ * shell call cannot trivially route around the native file-write tools with
  * `sed -i` / `tee` / `dd of=`. This is a HIGH-PRECISION subset, deliberately not
  * exhaustive: it targets the three canonical in-place writers with near-zero
  * false positives (`tee`, `sed -i`, `dd … of=`) and intentionally does NOT try
@@ -96,8 +102,11 @@ const FILE_WRITE_TOOLS = new Set(['write', 'create', 'edit', 'str_replace_editor
  */
 const READONLY_SHELL_WRITE = /\btee\b|\bsed\s+-i|\bdd\b[^\n]*\bof=/
 
-/** Tool names that reach the network directly (not via bash). */
-const NETWORK_TOOLS = new Set(['web_search', 'read_page'])
+const PS_READONLY_WRITE =
+  /\b(?:Set-Content|Add-Content|Clear-Content|Out-File|New-Item|Export-Csv)\b|(?:^|[;|&({=\r\n])\s*(?:ni|clc|epcsv)\b/i
+
+/** Tool names that reach the network directly (not via a shell). */
+const NETWORK_TOOLS = new Set(['web_search', 'web_fetch'])
 
 /**
  * Dangerous shell fragments: recursive/forced rm, raw disk writes, mkfs, world
@@ -105,28 +114,55 @@ const NETWORK_TOOLS = new Set(['web_search', 'read_page'])
  * clobbering a block device.
  */
 const DANGEROUS_SHELL =
-  /\brm\s+-\w*[rf]|\bdd\s+if=|\bmkfs\b|\bchmod\s+(-R\s+)?777\b|\|\s*(sudo\s+)?(sh|bash)\b|:\(\)\s*\{\s*:\s*\|\s*:|>\s*\/dev\/(sd|nvme|disk)/
+  /(?<![-\w])\brm\b[^\n;|&]*\s+(?:--(?:recursive|force)\b|-\w*[rRfF]\w*\b)|\bdd\b[^\n;|&]*\b(?:if|of)=|\bmkfs\b|\bchmod\s+(-R\s+)?777\b|\|\s*(sudo\s+)?(sh|bash)\b|:\(\)\s*\{\s*:\s*\|\s*:|>\s*\/dev\/(sd|nvme|disk)/
+
+const PS_DANGEROUS =
+  /\b(?:Format-Volume|Clear-Disk|Stop-Computer|Restart-Computer)\b|\bRemove-Item\b(?:[^\n;|]|`\r?\n)*-(?:R(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?|Fo(?:r(?:c(?:e)?)?)?)\b|(?:^|[;|&({=\r\n])\s*(?:rm|del|ri|rmdir|erase|rd)\b(?:[^\n;|]|`\r?\n)*-(?:R(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?|Fo(?:r(?:c(?:e)?)?)?)\b/i
+
+const SHELL_ARGUMENT = String.raw`(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s;|&"']+)`
+const PS_ENCODED = new RegExp(
+  String.raw`\b(?:pwsh|powershell)(?:\.exe)?(?:[ \t]+-(?:(?:ExecutionPolicy|ep|WindowStyle|InputFormat|OutputFormat)[ \t]+${SHELL_ARGUMENT}|[a-z]\w*))*[ \t]+-e(?:n(?:c(?:o(?:d(?:e(?:d(?:command)?)?)?)?)?)?)?\b`,
+  'i',
+)
 
 /**
  * Destructive git operations: force push, hard reset, forced clean, forced
  * branch delete.
  */
-const DESTRUCTIVE_GIT =
-  /git\s+push\b[^\n|&;]*(--force\b|--force-with-lease\b|-f\b)|git\s+reset\s+--hard\b|git\s+clean\s+-\w*f|git\s+branch\s+-D\b/
+const GIT_PREFIX = String.raw`\bgit(?:[ \t]+(?:(?:-[Cc]|--(?:git-dir|work-tree|namespace|config-env))[ \t]+${SHELL_ARGUMENT}|--[^\s;|&"']+(?:="[^"\r\n]*"|='[^'\r\n]*')?))*[ \t]+`
+const DESTRUCTIVE_GIT = new RegExp(
+  String.raw`${GIT_PREFIX}(?:push\b[^\n|&;]*(?:--force\b|--force-with-lease\b|--mirror\b|--delete\b|-f\b)|reset\b[^\n|&;]*--hard\b|clean\s+-\w*f|branch\s+-D\b)`,
+)
 
 /** Outbound-network shell fragments. */
-const NETWORK_CMD = /\b(curl|wget)\b|git\s+push\b|npm\s+publish\b|scp\b/
+const NETWORK_CMD = new RegExp(
+  String.raw`\b(curl|wget)\b|${GIT_PREFIX}push\b|\bnpm\b[^\n;|&]*\bpublish\b|\bscp\b`,
+)
+
+const PS_NETWORK =
+  /\b(?:Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer|iwr|irm)\b/i
 
 /**
  * Secret-bearing path fragments: dotenv files, private keys, credential stores,
  * cloud/ssh credential dirs. Each token is anchored on a boundary that holds
- * both for a bare `file_path` (start or a `/`) AND for a token embedded in a
- * shell command (a preceding space, quote, `=`, or `:`), so `rm -rf .env` and
+ * both for a bare `file_path` (start or a separator) AND for a token embedded in
+ * a shell command (a preceding space, quote, `=`, or `:`), so `rm -rf .env` and
  * `cat .env.local` match while ordinary words (`environment`, `prevent`,
- * `README.md`) do not.
+ * `README.md`) do not. The separator classes admit `\` as well as `/`, since a
+ * `pwsh` command carries native Windows paths.
  */
 const SECRET_PATH =
-  /(?:^|[\s/"'=:])\.env(?:\.[\w.-]+)?\b|\.pem\b|\bid_rsa\b|\bid_ed25519\b|\bcredentials(?:\.\w+)?\b|\.aws\/credentials|(?:^|[\s/"'=:])\.ssh\//
+  /(?:^|[\s/"'=:\\])\.env(?:\.[\w.-]+)?\b|\.pem\b|\bid_rsa\b|\bid_ed25519\b|\bcredentials(?:\.\w+)?\b|\.aws[\\/]credentials|(?:^|[\s/"'=:\\])\.ssh[\\/]/i
+
+function shellCommandMatches(
+  name: string,
+  args: Record<string, unknown>,
+  perShell: Readonly<Record<'bash' | 'pwsh', readonly RegExp[]>>,
+): boolean {
+  if (!SHELL_TOOLS.has(name)) return false
+  const command = argStr(args, 'command')
+  return perShell[name as 'bash' | 'pwsh'].some(pattern => pattern.test(command))
+}
 
 /**
  * The shipped guard presets, in evaluation order. `deny` presets precede `ask`
@@ -147,10 +183,15 @@ const GUARD_PRESETS: readonly GuardPreset[] = [
       + 'for this agent. Turn the readonly guard off to allow edits.',
     matches: (name, args) => {
       if (FILE_WRITE_TOOLS.has(name)) return true
+      if (name === STR_REPLACE_EDITOR) return !EDITOR_READ_COMMANDS.has(argStr(args, 'command'))
       // Also stop the canonical in-place shell writers, so readonly is not
-      // trivially bypassed by routing a write through bash. High-precision
-      // subset only (see READONLY_SHELL_WRITE) — redirection is not covered.
-      return name === 'bash' && READONLY_SHELL_WRITE.test(argStr(args, 'command'))
+      // trivially bypassed by routing a write through a shell. High-precision
+      // subset only (see READONLY_SHELL_WRITE / PS_READONLY_WRITE) — redirection
+      // is not covered.
+      return shellCommandMatches(name, args, {
+        bash: [READONLY_SHELL_WRITE],
+        pwsh: [READONLY_SHELL_WRITE, PS_READONLY_WRITE],
+      })
     },
   },
   {
@@ -169,8 +210,13 @@ const GUARD_PRESETS: readonly GuardPreset[] = [
       // secret file, not only a write to one.
       if (SECRET_PATH.test(argStr(args, 'file_path'))) return true
       if (SECRET_PATH.test(argStr(args, 'path'))) return true
-      if (name === 'bash') return SECRET_PATH.test(argStr(args, 'command'))
-      return false
+      // grep/glob's `include` is a filename filter (e.g. `*.env`); check it.
+      if (SECRET_PATH.test(argStr(args, 'include'))) return true
+      // glob's `pattern` is a glob expression (e.g. `**/.env`); strip glob
+      // metacharacters and test the remaining literal path.
+      const globPattern = argStr(args, 'pattern')
+      if (globPattern && name === 'glob' && SECRET_PATH.test(globPattern.replace(/[*?[\]{}]/g, ''))) return true
+      return shellCommandMatches(name, args, { bash: [SECRET_PATH], pwsh: [SECRET_PATH] })
     },
   },
   {
@@ -179,7 +225,10 @@ const GUARD_PRESETS: readonly GuardPreset[] = [
     description: 'Confirm dangerous shell commands (rm -rf, dd, mkfs, curl | sh, fork bombs).',
     action: 'ask',
     reason: 'The "dangerous-shell" guard flagged this command for confirmation.',
-    matches: (name, args) => name === 'bash' && DANGEROUS_SHELL.test(argStr(args, 'command')),
+    matches: (name, args) => shellCommandMatches(name, args, {
+      bash: [DANGEROUS_SHELL],
+      pwsh: [DANGEROUS_SHELL, PS_DANGEROUS, PS_ENCODED],
+    }),
   },
   {
     id: guardId('no-destructive-git'),
@@ -187,17 +236,23 @@ const GUARD_PRESETS: readonly GuardPreset[] = [
     description: 'Confirm destructive git (push --force, reset --hard, clean -fd, branch -D).',
     action: 'ask',
     reason: 'The "no-destructive-git" guard flagged this git command for confirmation.',
-    matches: (name, args) => name === 'bash' && DESTRUCTIVE_GIT.test(argStr(args, 'command')),
+    matches: (name, args) => shellCommandMatches(name, args, {
+      bash: [DESTRUCTIVE_GIT],
+      pwsh: [DESTRUCTIVE_GIT],
+    }),
   },
   {
     id: guardId('no-network'),
     name: 'no-network',
-    description: 'Confirm outbound network (web search, page fetch, curl/wget, git push, npm publish).',
+    description: 'Confirm outbound network (web search/fetch, curl/wget, git push, npm publish).',
     action: 'ask',
     reason: 'The "no-network" guard flagged this outbound-network action for confirmation.',
     matches: (name, args) => {
       if (NETWORK_TOOLS.has(name)) return true
-      return name === 'bash' && NETWORK_CMD.test(argStr(args, 'command'))
+      return shellCommandMatches(name, args, {
+        bash: [NETWORK_CMD],
+        pwsh: [NETWORK_CMD, PS_NETWORK, PS_ENCODED],
+      })
     },
   },
 ]
@@ -226,6 +281,31 @@ export interface GuardHit {
   readonly id: string
   readonly decision: Extract<PreToolDecision, { kind: 'deny' | 'ask' }>
 }
+
+/**
+ * One matched call offered to the user for a decision. Carries everything a
+ * confirmation channel needs to render the prompt and to cancel with the call.
+ */
+export interface GuardConfirmRequest {
+  /** The pending call's tool name. */
+  readonly toolName: string
+  /** The pending call's parsed arguments (object-normalized, as matched). */
+  readonly args: Record<string, unknown>
+  /** The decisive guard match. */
+  readonly hit: GuardHit
+  /** The guarded call's cancellation signal; an abort must settle the wait. */
+  readonly signal: AbortSignal
+}
+
+/**
+ * Ask the user to decide one guard match, blocking the pre-execute waterfall.
+ * `allow` releases the call via `next()`, `deny` blocks it with the hit's
+ * reason, and `null` means "no user channel available" — the caller then falls
+ * back to the hit's legacy decision (fail-safe, never fail-open). A throw is
+ * treated as `deny` (fail closed), like an evaluation error.
+ */
+export type GuardConfirmer = (req: GuardConfirmRequest) => Promise<'allow' | 'deny' | null>
+
 
 /**
  * Pure guard evaluation: the first active preset (deny presets first) whose
@@ -276,6 +356,10 @@ export function evaluateGuards(
  * @param scopedCtx - the agent-scoped context (its scope tag filters dispatch).
  * @param active - the guard ids resolved active for this agent.
  * @param onHit - invoked with the preset id each time a call is denied/asked.
+ * @param confirmer - optional blocking user-confirmation channel; when present,
+ *   every match is offered to the user first and their answer wins over the
+ *   preset's fixed action. `null` (no channel) falls back to the legacy
+ *   decision, and a throw fails closed to deny.
  * @returns a disposer array: one listener disposer when any guard is active,
  *   empty when none are (nothing installed).
  */
@@ -283,6 +367,7 @@ export function applyGuards(
   scopedCtx: Context,
   active: ReadonlySet<string>,
   onHit: (id: string) => void,
+  confirmer?: GuardConfirmer,
 ): Array<() => void> {
   if (active.size === 0) return []
   const dispose = scopedCtx.on(
@@ -311,7 +396,29 @@ export function applyGuards(
       } catch {
         /* ignore hit-tally failures; the decision below stands */
       }
-      return Promise.resolve(hit.decision)
+      if (confirmer === undefined) return Promise.resolve(hit.decision)
+      // The user decision path: block until answered. `allow` delegates to
+      // next() — this listener must not CLAIM allow, because later pre-execute
+      // listeners and the registry's monotonic guards still get their say.
+      // Anything that prevents an answer (no channel, throw, abort) resolves to
+      // the legacy decision or a deny; it can never widen what runs.
+      const argObj: Record<string, unknown> =
+        exec.arguments !== null && typeof exec.arguments === 'object'
+          ? (exec.arguments as Record<string, unknown>) : {}
+      return confirmer({ toolName: exec.name, args: argObj, hit, signal: exec.signal })
+        .then(answer => {
+          if (answer === 'allow') return next()
+          if (answer === 'deny') {
+            return {
+              kind: 'deny',
+              reason: `Blocked: the user denied this call (guard "${hit.id}").`,
+            } as const
+          }
+          return hit.decision
+        }, () => ({
+          kind: 'deny',
+          reason: 'Blocked: the guard confirmation channel failed, so this call was denied (fail closed).',
+        } as const))
     },
     { prepend: true },
   )

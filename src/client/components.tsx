@@ -578,3 +578,85 @@ export function Panel(props: {
     </div>
   )
 }
+
+/**
+ * One pending guard confirmation, rendered as a card the user answers. Shown
+ * regardless of whether the toggle panel is open — a blocked call must surface
+ * its prompt even with the popup closed. The full guarded command/args is
+ * disclosed (the user explicitly chose full-command disclosure), scrollable
+ * when long. Allow/Deny settle the Host's blocked pre-execute call over the
+ * respond route; the card is dismissed by the Host's resolved broadcast (so
+ * every tab closes in sync), not by local state alone.
+ */
+export function ConfirmationCard(props: {
+  readonly guardId: string
+  readonly guardAction: 'deny' | 'ask'
+  readonly reason: string
+  readonly toolName: string
+  readonly detail: string
+  readonly busy: boolean
+  readonly failed?: boolean
+  readonly t: Translate
+  readonly onAnswer: (decision: 'allow' | 'deny') => void
+}): JSX.Element {
+  const guardName = props.guardId.startsWith('guard:') ? props.guardId.slice(6) : props.guardId
+  return (
+    <div
+      className="dshct-confirm"
+      role="alertdialog"
+      aria-modal="false"
+      aria-label={props.t('guard.confirm.title')}
+      data-action={props.guardAction}
+    >
+      <div className="dshct-confirm-head">
+        <span className="dshct-confirm-badge" data-action={props.guardAction}>
+          {props.guardAction === 'deny'
+            ? props.t('guard.action.deny')
+            : props.t('guard.action.ask')}
+        </span>
+        <span className="dshct-confirm-title">{props.t('guard.confirm.title')}</span>
+      </div>
+      <div className="dshct-confirm-body">
+        {props.t('guard.confirm.body', { guard: guardName, tool: props.toolName })}
+      </div>
+      <div className="dshct-confirm-section">
+        <div className="dshct-confirm-label">{props.t('guard.confirm.reason')}</div>
+        <div className="dshct-confirm-reason">{props.reason}</div>
+      </div>
+      <div className="dshct-confirm-section">
+        <div className="dshct-confirm-label">{props.t('guard.confirm.detail')}</div>
+        <pre
+          className="dshct-confirm-detail"
+          tabIndex={0}
+          aria-label={props.t('guard.confirm.detail')}
+        >{props.detail}</pre>
+      </div>
+      {props.busy
+        ? <div className="dshct-confirm-waiting">{props.t('guard.confirm.waiting')}</div>
+        : null}
+      {props.failed
+        ? <div className="dshct-confirm-error" role="alert">{props.t('guard.confirm.retry')}</div>
+        : null}
+      <div className="dshct-confirm-actions">
+        <button
+          type="button"
+          className="dshct-confirm-btn"
+          data-kind="deny"
+          disabled={props.busy}
+          onClick={() => props.onAnswer('deny')}
+        >
+          {props.t('guard.confirm.deny')}
+        </button>
+        <button
+          type="button"
+          className="dshct-confirm-btn"
+          data-kind="allow"
+          disabled={props.busy}
+          onClick={() => props.onAnswer('allow')}
+        >
+          {props.t('guard.confirm.allow')}
+        </button>
+      </div>
+    </div>
+  )
+}

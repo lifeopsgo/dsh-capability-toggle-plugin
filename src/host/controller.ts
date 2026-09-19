@@ -13,6 +13,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityDescriptor, CapabilityToggleProjection } from '../shared/types.ts'
 import { buildProjection } from '../shared/resolve.ts'
 import { AgentBinding } from './agent-binding.ts'
+import type { ConfirmationCenter } from './confirm.ts'
 import type { DriftSink } from './inventory.ts'
 import type { OverrideStore } from './store.ts'
 
@@ -51,6 +52,8 @@ export class ControllerRegistry {
    * @param store - the shared override store.
    * @param hostCtx - this plugin's context, whose `skills`/`tools` inject each
    *   binding borrows through a scope minted onto the agent's scope key.
+   * @param center - the shared blocking-confirmation registry handed to every
+   *   binding (optional; a binding without one keeps legacy deny/ask).
    * @param onDrift - optional warn-once sink handed to every binding's inventory
    *   read, so an unexpected framework shape alarms once instead of silently
    *   yielding an empty capability list.
@@ -58,6 +61,7 @@ export class ControllerRegistry {
   constructor(
     private readonly store: OverrideStore,
     private readonly hostCtx: Context,
+    private readonly center?: ConfirmationCenter,
     private readonly onDrift?: DriftSink,
   ) {}
 
@@ -67,7 +71,7 @@ export class ControllerRegistry {
    * @returns the created binding.
    */
   async add(agent: Agent): Promise<AgentBinding> {
-    const binding = new AgentBinding(this.store, this.hostCtx, agent, this.onDrift)
+    const binding = new AgentBinding(this.store, this.hostCtx, agent, this.center, this.onDrift)
     this.bindings.set(agent.session.id, binding)
     await binding.reconcile()
     return binding

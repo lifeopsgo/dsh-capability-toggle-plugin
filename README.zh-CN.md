@@ -5,7 +5,7 @@
 **在 DSH WebUI 中控制 agent 能力，并在运行时真正强制执行。**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#快速开始)
-![tests](https://img.shields.io/badge/tests-173%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-197%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -42,7 +42,7 @@
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.2
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.4.0
 dsh --profile web web
 ```
 
@@ -53,7 +53,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.3.2
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.4.0
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -147,4 +147,4 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 
 ---
 
-<div align="center"><sub>MIT，见 <a href="./LICENSE">LICENSE</a></sub></div>
+<div align="center"><sub>MIT — 见 <a href="./LICENSE">LICENSE</a></sub></div>

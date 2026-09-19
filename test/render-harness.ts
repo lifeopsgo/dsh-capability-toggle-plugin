@@ -73,9 +73,10 @@ if (dispatcherSeat !== undefined) {
 }
 
 let Panel: ((props: unknown) => unknown) | null = null
+let mod: Record<string, unknown> | null = null
 
-async function load(): Promise<(props: unknown) => unknown> {
-  if (Panel !== null) return Panel
+async function loadModule(): Promise<Record<string, unknown>> {
+  if (mod !== null) return mod
   mkdirSync(new URL('../.temp/', import.meta.url), { recursive: true })
   // One stable path, overwritten per run: a PID-keyed name leaked a file into
   // .temp on every invocation. The version query below still defeats the ESM
@@ -87,8 +88,14 @@ async function load(): Promise<(props: unknown) => unknown> {
   })
   const { output } = await bundle.generate({ format: 'esm' })
   writeFileSync(out, output[0].code)
-  const mod = await import(`${out.pathname}?v=${Date.now()}`)
-  Panel = mod.Panel as (props: unknown) => unknown
+  mod = (await import(`${out.pathname}?v=${Date.now()}`)) as Record<string, unknown>
+  return mod
+}
+
+async function load(): Promise<(props: unknown) => unknown> {
+  if (Panel !== null) return Panel
+  const m = await loadModule()
+  Panel = m.Panel as (props: unknown) => unknown
   return Panel
 }
 
@@ -178,4 +185,17 @@ export async function renderPanel(props: unknown, keepState = false): Promise<Re
   } finally {
     current = outer
   }
+}
+
+/**
+ * Render the ConfirmationCard leaf directly (no hooks, no children components)
+ * and walk its element tree, the same way renderPanel does for Panel. The card
+ * is a pure presentational component, so this pins exactly what the user sees:
+ * the guard label, the reason, the full command detail, and the two answer
+ * buttons with their disabled state and click handlers.
+ */
+export async function renderConfirmationCard(props: unknown): Promise<Rendered> {
+  const m = await loadModule()
+  const Card = m.ConfirmationCard as (props: unknown) => unknown
+  return toRendered(walk(Card(props), '', [], 0))
 }

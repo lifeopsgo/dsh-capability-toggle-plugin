@@ -94,3 +94,19 @@ export interface SetManyRequest {
 export interface StateResponse {
   readonly projection: CapabilityToggleProjection
 }
+
+export type ConfirmPush =
+  | { readonly kind: 'pending'; readonly card: ConfirmCard }
+  | { readonly kind: 'resolved'; readonly id: string }
+  | { readonly kind: 'snapshot'; readonly cards: readonly ConfirmCard[] }
+
+export type ConfirmResponse = 'accepted' | 'gone' | 'retry'
+
+export interface ConfirmCard {
+  readonly id: string
+  readonly guardId: string
+  readonly guardAction: 'deny' | 'ask'
+  readonly reason: string
+  readonly toolName: string
+  readonly detail: string
+}

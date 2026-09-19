@@ -28,6 +28,31 @@ const CSS = `
    narrow phone screen, so this one rule covers both the sidebar and mobile. */
 .dshct-overlay{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;background:rgba(0,0,0,.28);animation:dshct-fade .13s ease-out}
 @keyframes dshct-fade{from{opacity:0}to{opacity:1}}
+/* confirm card: FIXED so a blocked call surfaces its prompt even with the
+   toggle panel closed, anchored bottom-right (clear of the centered panel and
+   the composer). Multiple cards would overlap; the host blocks one call per
+   agent at a time, and a second card stacking over the first is still legible
+   because each is opaque. Reuses dshct-pop below for its entrance. */
+.dshct-confirm{position:fixed;right:16px;bottom:16px;z-index:2147482000;width:min(420px,calc(100vw - 32px));box-sizing:border-box;display:flex;flex-direction:column;gap:9px;padding:14px 15px;border:1px solid var(--dsw-alias-border-l1);border-left:3px solid var(--dsw-alias-label-tertiary);border-radius:12px;background:var(--dsw-alias-bg-base);box-shadow:var(--dsw-shadow-lv3);animation:dshct-pop .14s cubic-bezier(.34,1.56,.64,1)}
+.dshct-confirm[data-action="deny"]{border-left-color:var(--dsw-alias-danger,#e5484d)}
+.dshct-confirm[data-action="ask"]{border-left-color:var(--dsw-alias-warning,#f5a623)}
+.dshct-confirm-head{display:flex;align-items:center;gap:8px}
+.dshct-confirm-badge{flex:none;font-size:11px;font-weight:600;line-height:1;padding:3px 7px;border-radius:6px;color:#fff;background:var(--dsw-alias-label-tertiary)}
+.dshct-confirm-badge[data-action="deny"]{background:var(--dsw-alias-danger,#e5484d)}
+.dshct-confirm-badge[data-action="ask"]{background:var(--dsw-alias-warning,#f5a623)}
+.dshct-confirm-title{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}
+.dshct-confirm-body{font-size:12.5px;line-height:1.5;color:var(--dsw-alias-label-secondary)}
+.dshct-confirm-section{display:flex;flex-direction:column;gap:4px}
+.dshct-confirm-label{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--dsw-alias-label-tertiary)}
+.dshct-confirm-reason{font-size:12px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
+.dshct-confirm-detail{margin:0;max-height:160px;overflow:auto;padding:8px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-subtle,rgba(0,0,0,.03));font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:11.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--dsw-alias-label-primary)}
+.dshct-confirm-waiting{font-size:11.5px;color:var(--dsw-alias-label-tertiary)}
+.dshct-confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:2px}
+.dshct-confirm-btn{padding:6px 14px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:12.5px;font-weight:500;cursor:pointer;transition:background .15s ease,opacity .15s ease}
+.dshct-confirm-btn:disabled{opacity:.5;cursor:default}
+.dshct-confirm-btn[data-kind="allow"]{background:var(--dsw-alias-brand,#3b82f6);border-color:transparent;color:#fff}
+.dshct-confirm-btn[data-kind="allow"]:hover:not(:disabled){filter:brightness(1.06)}
+.dshct-confirm-btn[data-kind="deny"]:hover:not(:disabled){background:var(--dsw-alias-bg-subtle,rgba(0,0,0,.05))}
 /* panel: FIXED width AND height — switching tabs never resizes it; only the
    inner list scrolls. Height is a viewport-bounded value so a short phone
    screen never clips it (min() picks the smaller of the cap and the space that
