@@ -67,7 +67,6 @@ export interface RespondBody {
  * @param ctx - the Host context (must inject `webServer`).
  * @param store - the shared override store.
  * @param registry - the live-agent controller registry.
- * @param center - the blocking-confirmation registry backing the SSE routes.
  * @returns a disposer that unregisters every route.
  */
 export function installHttp(
@@ -77,6 +76,7 @@ export function installHttp(
   center: ConfirmationCenter,
 ): () => void {
   const auth = resolveAuth(ctx)
+  const liveStreams = new Set<() => void>()
   const disposeState = ctx.webServer.register({
     kind: 'exact',
     path: `${ROUTE_PREFIX}/state`,
@@ -99,7 +99,16 @@ export function installHttp(
     kind: 'exact',
     path: `${ROUTE_PREFIX}/confirm/stream`,
     handler: (req, res) => guard(ctx, res, async () => {
-      await handleMethod(req, res, 'GET', async () => { await handleConfirmStream(req, res, center, auth) })
+      await handleMethod(req, res, 'GET', async () => {
+        // The stream reports its own teardown instead of this route adding a
+        // listener, so the connection's listener count stays exactly what the
+        // stream owns.
+        let teardown: (() => void) | undefined
+        teardown = handleConfirmStream(req, res, center, auth, () => {
+          if (teardown !== undefined) liveStreams.delete(teardown)
+        })
+        if (teardown !== undefined) liveStreams.add(teardown)
+      })
     }),
   })
   const disposeConfirmRespond = ctx.webServer.register({
@@ -112,6 +121,8 @@ export function installHttp(
   return () => {
     disposeConfirmRespond()
     disposeConfirmStream()
+    for (const teardown of [...liveStreams]) teardown()
+    liveStreams.clear()
     disposeSetMany()
     disposeSet()
     disposeState()
@@ -121,21 +132,37 @@ export function installHttp(
 /**
  * Resolve the official Connection authentication seam. Named WebServer routes
  * bypass the `/api` RPC channel and the static-fallback authentication, so the
- * plugin MUST apply `connection.requestRejection(req)` itself. When the seam
- * is absent or incompatible the plugin fails closed with 503 — the older
- * runtime must be upgraded rather than served unauthenticated.
+ * plugin MUST apply `connection.requestRejection(req)` itself.
+ *
+ * Resolved PER REQUEST, never captured at install time: a one-shot capture at
+ * `installHttp` returned `() => 503` on a real restart (the service was not yet
+ * resolvable), which failed EVERY route closed — the panel then reported "no
+ * running agent" and showed no switches at all. `connection` is also declared in
+ * the plugin's `inject`, so the framework does not call `apply` before the
+ * service exists; the lazy read is the second half of the guarantee. If the seam
+ * is genuinely absent the request still fails closed, but as a per-request 503
+ * rather than a route that can never recover.
  */
+export function resolveAuthForTest(ctx: Context): RequestRejection {
+  return resolveAuth(ctx)
+}
+
 function resolveAuth(ctx: Context): RequestRejection {
-  const connection = ctx.get('connection') as { requestRejection?: unknown } | undefined
-  const fn = connection?.requestRejection
-  if (typeof fn !== 'function') return () => 503
   return (req) => {
     try {
-      const result = (fn as (req: IncomingMessage) => unknown)(req)
-      if (result === undefined || result === null) return undefined
+      const connection = ctx.get('connection') as
+        | { requestRejection?: (req: IncomingMessage) => unknown }
+        | undefined
+      const reject = connection?.requestRejection
+      if (connection === undefined || typeof reject !== 'function') return 503
+      // Call through the service object, never a detached reference: the
+      // cordis traceable proxy only substitutes the real receiver when the
+      // proxy itself is passed as `this`, so an unbound call throws inside the
+      // service and would turn every request into a 503.
+      const result = reject.call(connection, req)
+      if (result === undefined) return undefined
       if (typeof result === 'number') return result
-      if (result instanceof Promise) return 503
-      return undefined
+      return 503
     } catch {
       return 503
     }
@@ -168,7 +195,6 @@ async function guard(
   }
 }
 
-/** Enforce the expected HTTP method for a route; answer 405 otherwise. */
 async function handleMethod(
   req: IncomingMessage,
   res: ServerResponse,
@@ -288,35 +314,31 @@ async function handleSetMany(
 }
 
 /**
- * Open one browser's SSE confirmation stream. The response is held open for the
- * subscription's lifetime: the center writes `confirm` pushes into it as guard
- * matches arrive, and the disposer returned by `subscribe` runs when the client
- * disconnects (or the center is disposed on plugin unload).
- *
- * A 15s keep-alive comment frame keeps intermediaries from dropping an idle
- * stream; the interval is unref'd and cleared on close so it never holds the
- * process alive nor leaks past the connection.
+ * Open one browser's SSE confirmation stream; the center writes `confirm`
+ * pushes into it for the subscription's lifetime. The 15s keep-alive comment
+ * frame keeps intermediaries from dropping an idle stream.
  */
 function handleConfirmStream(
   req: IncomingMessage,
   res: ServerResponse,
   center: ConfirmationCenter,
   auth: RequestRejection,
-): void {
+  onTeardown?: () => void,
+): (() => void) | undefined {
   const rejection = auth(req)
   if (rejection !== undefined) {
     sendJson(res, rejection, { error: 'unauthorized' })
-    return
+    return undefined
   }
   if (!isSameOrigin(req)) {
     sendJson(res, 403, { error: 'cross-origin SSE is not allowed' })
-    return
+    return undefined
   }
   const url = new URL(req.url ?? '', 'http://localhost')
   const session = url.searchParams.get('session')
   if (session === null || session === '') {
     sendJson(res, 400, { error: 'missing session parameter' })
-    return
+    return undefined
   }
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
@@ -325,21 +347,19 @@ function handleConfirmStream(
     'connection': 'keep-alive',
   })
   res.flushHeaders()
-  const sink = {
-    write: (chunk: string): boolean => res.write(chunk),
-    end: (): void => { res.end() },
-  }
-  const off = center.subscribe(session, sink)
+  let torn = false
+  let off: () => void = () => {}
+  // The heartbeat exists BEFORE the center subscription, so a subscribe that
+  // ends the sink still finds a timer to clear; creating it after `subscribe`
+  // leaves the interval running forever in exactly that case.
   const keepAlive = setInterval(() => {
     try {
       if (!res.write(': keep-alive\n\n')) clearInterval(keepAlive)
     } catch {
-      clearInterval(keepAlive)
-      off()
+      teardown()
     }
   }, 15_000)
   keepAlive.unref?.()
-  let torn = false
   const teardown = (): void => {
     if (torn) return
     torn = true
@@ -351,15 +371,23 @@ function handleConfirmStream(
     res.removeListener('error', teardown)
     res.removeListener('finish', teardown)
     if (!res.writableEnded) res.end()
+    onTeardown?.()
   }
+  // The center's own `end()` must run the FULL teardown, so the heartbeat stops
+  // and every listener this stream installed is removed.
+  const sink = {
+    write: (chunk: string): boolean => res.write(chunk),
+    end: (): void => teardown(),
+  }
+  off = center.subscribe(session, sink)
   req.once('aborted', teardown)
   req.once('error', teardown)
   res.once('close', teardown)
   res.once('error', teardown)
   res.once('finish', teardown)
+  return teardown
 }
 
-/** Settle one pending confirmation from the browser card's button click. */
 async function handleConfirmRespond(
   req: IncomingMessage,
   res: ServerResponse,
@@ -383,9 +411,7 @@ async function handleConfirmRespond(
     return
   }
   const settled = center.respond(body.session, body.id, body.decision)
-  // 410 (not 404) when the id is unknown/already settled: the confirmation is
-  // GONE, and the card treats it as "someone/something already answered" and
-  // closes itself via the resolved broadcast it will (or did) receive.
+  // 410 (not 404) so the card reads it as "already answered" and closes itself.
   sendJson(res, settled ? 200 : 410, { settled })
 }
 
@@ -561,20 +587,18 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(text)
 }
 
-/** Whether the request's content-type is application/json. */
 function isJsonContentType(req: IncomingMessage): boolean {
   const header = req.headers['content-type']
   if (typeof header !== 'string') return false
-  const lower = header.toLowerCase()
-  return lower.startsWith('application/json')
+  // Compare the MEDIA TYPE, not a prefix: `startsWith('application/json')`
+  // also admits `application/jsonp`.
+  return header.split(';', 1)[0]!.trim().toLowerCase() === 'application/json'
 }
 
 /**
- * Same-origin check for SSE. The browser's EventSource API does not send
- * Origin or Sec-Fetch-Site for GET requests, but we still enforce them when
- * present to block cross-origin attacks. When absent, we rely on the Host
- * header (which the browser always sends) to verify the request came from
- * the same origin.
+ * Same-origin check for SSE. EventSource sends no Origin or Sec-Fetch-Site for
+ * a same-origin GET, so when they are absent the Host header (always sent) is
+ * what verifies the origin.
  */
 function isSameOrigin(req: IncomingMessage): boolean {
   const host = req.headers['host']
@@ -585,10 +609,12 @@ function isSameOrigin(req: IncomingMessage): boolean {
     if (secFetchSite === 'cross-site' || secFetchSite === 'same-site') return false
   }
   if (typeof origin === 'string') {
+    // Any Origin we do see marks a cross-origin context, so accept it only when
+    // it matches this server's origin exactly (scheme included) — which also
+    // rejects an opaque `null` and https-on-http.
     try {
       const originUrl = new URL(origin)
-      const hostUrl = new URL(`http://${host}`)
-      return originUrl.host === hostUrl.host
+      return originUrl.protocol === 'http:' && originUrl.host === host
     } catch {
       return false
     }

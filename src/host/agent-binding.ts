@@ -121,9 +121,8 @@ export class AgentBinding {
    * @param store - the shared override store.
    * @param hostCtx - this plugin's context (injects `skills` and `tools`).
    * @param agent - the live agent this binding enforces.
-   * @param center - the shared blocking-confirmation registry; guard matches are
-   *   offered to the user through it (optional, so a binding without one keeps
-   *   the legacy deny/ask behavior).
+   * @param center - the shared blocking-confirmation registry (optional, so a
+   *   binding without one keeps the legacy deny/ask behavior).
    * @param onDrift - optional warn-once sink for unexpected framework shapes
    *   seen while reading this agent's inventory (threaded to `collectInventory`).
    */
@@ -284,13 +283,6 @@ export class AgentBinding {
    * scopeless listener would gate every agent; a scopeless binding installs no
    * guard. A single prepended listener runs the pure matcher and counts each hit
    * on the reconcile-surviving `guardHits` tally.
-   *
-   * When the shared confirmation center is present, every match is additionally
-   * offered to the user over the plugin's own SSE channel and BLOCKS until
-   * answered — independent of the session's approval policy, so a `never`
-   * policy can no longer silently reject an `ask` guard (see host/confirm.ts).
-   * With no browser subscribed for this session the confirmer returns null and
-   * the legacy decision stands, so a headless turn never hangs.
    */
   private installGuards(): void {
     if (this.scopeKey === undefined) return

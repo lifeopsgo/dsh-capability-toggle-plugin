@@ -36,7 +36,7 @@ export const name = 'dsh-capability-toggle-plugin'
  * lifecycle events drive tracking, and `webServer` carries the browser panel
  * channel.
  */
-export const inject = ['settings', 'tools', 'skills', 'systemPrompt', 'webServer']
+export const inject = ['settings', 'tools', 'skills', 'systemPrompt', 'webServer', 'connection']
 
 /**
  * Host plugin body. Every contribution is an effect, so plugin unload (or HMR
@@ -60,9 +60,6 @@ export function apply(ctx: Context): void {
   const registry = new ControllerRegistry(store, ctx, center, onDrift)
 
   ctx.effect(() => installHttp(ctx, store, registry, center), 'capability-toggle: http routes')
-  // Tear the confirmation channel down on unload so no blocked pre-execute call
-  // outlives the plugin: dispose() cancels every pending confirmation (settling
-  // its guard to fail-closed) and ends every open SSE stream.
   ctx.effect(() => () => center.dispose(), 'capability-toggle: confirmation center')
 
   // A committed change at any level (from any client) re-applies enforcement to

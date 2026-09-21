@@ -580,13 +580,9 @@ export function Panel(props: {
 }
 
 /**
- * One pending guard confirmation, rendered as a card the user answers. Shown
- * regardless of whether the toggle panel is open — a blocked call must surface
- * its prompt even with the popup closed. The full guarded command/args is
- * disclosed (the user explicitly chose full-command disclosure), scrollable
- * when long. Allow/Deny settle the Host's blocked pre-execute call over the
- * respond route; the card is dismissed by the Host's resolved broadcast (so
- * every tab closes in sync), not by local state alone.
+ * Shown regardless of whether the toggle panel is open — a blocked call must
+ * surface its prompt even with the popup closed. The card is dismissed by the
+ * Host's resolved broadcast (so every tab closes in sync), not by local state.
  */
 export function ConfirmationCard(props: {
   readonly guardId: string

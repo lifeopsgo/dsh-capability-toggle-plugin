@@ -38,7 +38,6 @@ import type { ClientContext, ConfirmCard, ConfirmPush, InputZoneProps } from './
 interface ConfirmEntry {
   readonly card: ConfirmCard
   readonly status: 'idle' | 'busy' | 'retry'
-  readonly attempt?: object
 }
 
 interface ConfirmScope {
@@ -165,7 +164,6 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
 
   const scopeRef = useRef<ConfirmScope | null>(null)
   const [, rerender] = useState(0)
-  const [, announceCount] = useState(0)
 
   const updateScope = useCallback((next: ConfirmScope | null) => {
     scopeRef.current = next
@@ -176,7 +174,6 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
     const scope = scopeRef.current
     if (scope === null) return
     updateScope({ sessionId: scope.sessionId, cards, active: scope.active })
-    announceCount(n => n + 1)
   }, [updateScope])
 
   const applyRef = useRef(apply)
@@ -220,9 +217,8 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
     if (scope === null) return
     const entry = scope.cards.get(id)
     if (entry === undefined || entry.status === 'busy') return
-    const attempt = {}
     const next = new Map(scope.cards)
-    next.set(id, { card: entry.card, status: 'busy', attempt })
+    next.set(id, { card: entry.card, status: 'busy' })
     apply(next)
     void respondConfirm(scope.sessionId, id, decision).then(outcome => {
       if (!aliveRef.current) return
@@ -239,7 +235,6 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
         next.delete(id)
         apply(next)
       } else {
-        // For retry cases, update the existing entry to retry status
         const next = new Map(currentScope.cards)
         next.set(id, { card: current.card, status: 'retry' })
         apply(next)
@@ -248,7 +243,6 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
   }, [apply])
 
   const confirmList = scopeRef.current === null || scopeRef.current.sessionId !== sessionId ? [] : [...scopeRef.current.cards.values()]
-  const pendingCount = confirmList.length
 
   return (
     <div className="dshct-wrap" ref={wrapRef}>

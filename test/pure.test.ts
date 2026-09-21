@@ -953,19 +953,39 @@ test('readonly guard does not deny the `sc`/`ac` aliases (accepted narrow bypass
   assert.equal(evaluateGuards(active, 'pwsh', { command: '$nisc = 1; Write-Host $nisc' }), null)
 })
 
-test('readonly matches cmdlet names inside quoted text, as the bash side already does', () => {
-  // The PRE-EXISTING bash patterns are unanchored substring matches, so a quoted
-  // or commented mention already denies today: `echo "tee x"` and `# sed -i f`
-  // both hit READONLY_SHELL_WRITE. Matching cmdlet names the same way keeps the
-  // two shells consistent and prefers a cheap false positive on quoted text over
-  // a fail-open on a real write reached through an assignment (`$x =
-  // Set-Content …`), a pipeline, a subexpression, or the `&` call operator.
-  // Long cmdlet names need no statement anchor because they are distinctive
-  // enough on their own; only the short `ni` alias keeps one.
+test('readonly denies a pwsh write reached through every non-quoted route', () => {
+  // BEHAVIOUR CHANGE (v1.5.0, deliberate): this test previously ALSO required
+  // `Write-Host "Set-Content"` to deny, to mirror the bash side's unanchored
+  // substring match (`echo "tee x"` and `# sed -i f` still deny there). That
+  // mirror cost a NON-RECOVERABLE false positive on a plain read-only command —
+  // `Get-Help New-Item`, `Get-Command Export-Csv`, `Select-String -Pattern
+  // New-Item` and `Write-Host "use Out-File"` were all hard-denied — so the
+  // PowerShell long names are now anchored to a command position, and a quoted
+  // mention no longer trips them. The consistency with bash is traded away on
+  // purpose: a quoted mention is not a write.
+  //
+  // The guard must still deny every route by which a REAL write can reach a
+  // cmdlet, which is what this test pins — an assignment, the call operator
+  // (quoted or not), a subexpression, a pipeline, and a statement position.
   const active = new Set([guardId('readonly')])
-  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Write-Host "Set-Content"' })?.decision.kind, 'deny')
-  for (const command of ['$x = Set-Content a b', '& "Set-Content" a b', '$(Out-File a)', 'Get-Process | Set-Content a']) {
+  assert.equal(evaluateGuards(active, 'pwsh', { command: 'Write-Host "Set-Content"' }), null)
+  for (const command of [
+    'Set-Content a b', '$x = Set-Content a b', '& "Set-Content" a b',
+    '$(Out-File a)', 'Get-Process | Set-Content a', '; Set-Content x y', 'New-Item x',
+  ]) {
     assert.equal(evaluateGuards(active, 'pwsh', { command })?.decision.kind, 'deny', command)
+  }
+})
+
+test('readonly leaves read-only pwsh commands that merely name a cmdlet alone', () => {
+  // The other half of that change: these are reads, and denying them made the
+  // guard unusable for ordinary inspection.
+  const active = new Set([guardId('readonly')])
+  for (const command of [
+    'Get-Help New-Item', 'Get-Help Set-Content', 'Get-Command Export-Csv',
+    'Select-String -Pattern New-Item', 'Write-Host "use Out-File"',
+  ]) {
+    assert.equal(evaluateGuards(active, 'pwsh', { command }), null, command)
   }
 })
 

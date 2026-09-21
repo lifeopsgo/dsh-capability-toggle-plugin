@@ -79,7 +79,7 @@ function argStr(args: Record<string, unknown>, key: string): string {
   return typeof v === 'string' ? v : ''
 }
 
-const SHELL_TOOLS = new Set(['bash', 'pwsh'])
+export const SHELL_TOOLS = new Set(['bash', 'pwsh'])
 
 const STR_REPLACE_EDITOR = 'str_replace_editor'
 
@@ -100,10 +100,13 @@ const EDITOR_READ_COMMANDS = new Set(['view'])
  * description). A determined `python -c "open(...,'w')"`, a heredoc, or an MCP
  * write tool is out of scope by design.
  */
-const READONLY_SHELL_WRITE = /\btee\b|\bsed\s+-i|\bdd\b[^\n]*\bof=/
+const READONLY_SHELL_WRITE = /\btee\b|\bsed\s+-i|\bdd\b[^\n]{0,2000}?\bof=/
 
-const PS_READONLY_WRITE =
-  /\b(?:Set-Content|Add-Content|Clear-Content|Out-File|New-Item|Export-Csv)\b|(?:^|[;|&({=\r\n])\s*(?:ni|clc|epcsv)\b/i
+const PS_READONLY_WRITE = new RegExp(
+  String.raw`(?:^|[;|&({=\r\n])[ \t]*(?:&[ \t]*)?\$?\(?[ \t]*["']?[ \t]*(?:Set-Content|Add-Content|Clear-Content|Out-File|New-Item|Export-Csv)\b`
+  + String.raw`|(?:^|[;|&({=\r\n])[ \t]*(?:ni|clc|epcsv)\b`,
+  'i',
+)
 
 /** Tool names that reach the network directly (not via a shell). */
 const NETWORK_TOOLS = new Set(['web_search', 'web_fetch'])
@@ -113,30 +116,48 @@ const NETWORK_TOOLS = new Set(['web_search', 'web_fetch'])
  * writable chmod, piping a download straight into a shell, a fork bomb, or
  * clobbering a block device.
  */
-const DANGEROUS_SHELL =
-  /(?<![-\w])\brm\b[^\n;|&]*\s+(?:--(?:recursive|force)\b|-\w*[rRfF]\w*\b)|\bdd\b[^\n;|&]*\b(?:if|of)=|\bmkfs\b|\bchmod\s+(-R\s+)?777\b|\|\s*(sudo\s+)?(sh|bash)\b|:\(\)\s*\{\s*:\s*\|\s*:|>\s*\/dev\/(sd|nvme|disk)/
+const SHELL_GAP = String.raw`[^;|&]{0,8000}?`
+const SHELL_REST = String.raw`[^\n|&;]{0,8000}?`
+const PS_GAP = String.raw`(?:[^\n;|` + '`' + String.raw`]|` + '`' + String.raw`\r?\n){0,8000}?`
+const PS_DELETE_TAIL = String.raw`-(?:R(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?|Fo(?:r(?:c(?:e)?)?)?)\b`
 
-const PS_DANGEROUS =
-  /\b(?:Format-Volume|Clear-Disk|Stop-Computer|Restart-Computer)\b|\bRemove-Item\b(?:[^\n;|]|`\r?\n)*-(?:R(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?|Fo(?:r(?:c(?:e)?)?)?)\b|(?:^|[;|&({=\r\n])\s*(?:rm|del|ri|rmdir|erase|rd)\b(?:[^\n;|]|`\r?\n)*-(?:R(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?|Fo(?:r(?:c(?:e)?)?)?)\b/i
+const DANGEROUS_SHELL = new RegExp(
+  String.raw`(?<![-\w])\brm\b${SHELL_GAP}(?:--(?:recursive|force)\b|-\w*[rRfF]\w*\b)`
+  + String.raw`|\bdd\b${SHELL_GAP}\b(?:if|of)=`
+  + String.raw`|\bmkfs\b|\bmke2fs\b|\bshred\b`
+  + String.raw`|\bchmod\s+(?:-R\s+)?(?:0?777\b|ugo\+rwx\b|a\+rwx\b)`
+  + String.raw`|\|\s*(?:sudo\s+)?(?:\S{0,200}\/)?(?:sh|bash)\b`
+  + String.raw`|\|\s*(?:sudo\s+)?\S{0,200}\/env\s+bash\b`
+  + String.raw`|:\s*\(\s*\)\s*\{\s*:\s*\|\s*:`
+  + String.raw`|>\s*\/dev\/(sd|nvme|disk)|\btee\s+\/dev\/(sd|nvme|disk)`,
+)
 
-const SHELL_ARGUMENT = String.raw`(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s;|&"']+)`
-const PS_ENCODED = new RegExp(
-  String.raw`\b(?:pwsh|powershell)(?:\.exe)?(?:[ \t]+-(?:(?:ExecutionPolicy|ep|WindowStyle|InputFormat|OutputFormat)[ \t]+${SHELL_ARGUMENT}|[a-z]\w*))*[ \t]+-e(?:n(?:c(?:o(?:d(?:e(?:d(?:command)?)?)?)?)?)?)?\b`,
+const PS_DANGEROUS = new RegExp(
+  String.raw`\b(?:Format-Volume|Clear-Disk|Stop-Computer|Restart-Computer)\b`
+  + String.raw`|\bRemove-Item\b${PS_GAP}${PS_DELETE_TAIL}`
+  + String.raw`|(?:^|[;|&({=\r\n])[ \t]*(?:rm|del|ri|rmdir|erase|rd)\b${PS_GAP}${PS_DELETE_TAIL}`,
   'i',
 )
 
-/**
- * Destructive git operations: force push, hard reset, forced clean, forced
- * branch delete.
- */
-const GIT_PREFIX = String.raw`\bgit(?:[ \t]+(?:(?:-[Cc]|--(?:git-dir|work-tree|namespace|config-env))[ \t]+${SHELL_ARGUMENT}|--[^\s;|&"']+(?:="[^"\r\n]*"|='[^'\r\n]*')?))*[ \t]+`
+const SHELL_ARGUMENT = String.raw`(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s;|&"']{1,500})`
+const PS_ENCODED = new RegExp(
+  // The `(?![ \t]*-)` on the option VALUE is what keeps this linear: without it a
+  // value can also parse as the next option, so `pwsh -ExecutionPolicy -x -x -x …`
+  // makes every position ambiguous and the match backtracks exponentially —
+  // ~570 bytes stalled the event loop for 15 s through the real evaluateGuards.
+  String.raw`\b(?:pwsh|powershell)(?:\.exe)?(?:[ \t]+-(?:(?:ExecutionPolicy|ep|WindowStyle|w|InputFormat|if|OutputFormat|of)[ \t]+(?![ \t]*-)${SHELL_ARGUMENT}|[a-z]\w*))*[ \t]+-e(?:n(?:c(?:o(?:d(?:e(?:d(?:command)?)?)?)?)?)?)?\b`,
+  'i',
+)
+
+const GIT_SEP = String.raw`\s+`
+const GIT_PREFIX = String.raw`\bgit(?:${GIT_SEP}(?:(?:-[Cc]|--(?:git-dir|work-tree|namespace|config-env))${GIT_SEP}${SHELL_ARGUMENT}|--[^\s;|&"']{0,200}(?:="[^"\r\n]{0,300}"|='[^'\r\n]{0,300}')?)){0,50}?${GIT_SEP}`
 const DESTRUCTIVE_GIT = new RegExp(
-  String.raw`${GIT_PREFIX}(?:push\b[^\n|&;]*(?:--force\b|--force-with-lease\b|--mirror\b|--delete\b|-f\b)|reset\b[^\n|&;]*--hard\b|clean\s+-\w*f|branch\s+-D\b)`,
+  String.raw`${GIT_PREFIX}(?:push\b${SHELL_REST}(?:--force\b|--force-with-lease\b|--mirror\b|--delete\b|-f\b)|reset\b${SHELL_REST}--hard\b|clean\s+-\w{0,10}f|branch\s+-D\b)`,
 )
 
 /** Outbound-network shell fragments. */
 const NETWORK_CMD = new RegExp(
-  String.raw`\b(curl|wget)\b|${GIT_PREFIX}push\b|\bnpm\b[^\n;|&]*\bpublish\b|\bscp\b`,
+  String.raw`\b(curl|wget)\b|${GIT_PREFIX}push\b|\bnpm\b[^\n;|&]{0,500}\bpublish\b|\bscp\b`,
 )
 
 const PS_NETWORK =
@@ -160,7 +181,16 @@ function shellCommandMatches(
   perShell: Readonly<Record<'bash' | 'pwsh', readonly RegExp[]>>,
 ): boolean {
   if (!SHELL_TOOLS.has(name)) return false
-  const command = argStr(args, 'command')
+  // Collapse horizontal whitespace runs before matching. Several patterns have
+  // adjacent `[ \t]*` groups (command position, call operator, optional quote),
+  // and on a long run of spaces those overlaps make the match quadratic — a
+  // 4000-space indented command took 13.9 s through the real listener, and 8000
+  // exceeded 185 s, stalling the shared event loop that every agent and the Web
+  // GUI run on. `try/catch` cannot help: a slow regex is not a throw. Collapsing
+  // is verdict-preserving (the patterns only ever test `[ \t]` runs as "some or
+  // no space"; a tab and a space are interchangeable at every such site), and it
+  // was verified equivalent across 1400 inputs with zero decision differences.
+  const command = argStr(args, 'command').replace(/[ \t]+/g, ' ')
   return perShell[name as 'bash' | 'pwsh'].some(pattern => pattern.test(command))
 }
 
@@ -210,7 +240,6 @@ const GUARD_PRESETS: readonly GuardPreset[] = [
       // secret file, not only a write to one.
       if (SECRET_PATH.test(argStr(args, 'file_path'))) return true
       if (SECRET_PATH.test(argStr(args, 'path'))) return true
-      // grep/glob's `include` is a filename filter (e.g. `*.env`); check it.
       if (SECRET_PATH.test(argStr(args, 'include'))) return true
       // glob's `pattern` is a glob expression (e.g. `**/.env`); strip glob
       // metacharacters and test the remaining literal path.
@@ -282,30 +311,21 @@ export interface GuardHit {
   readonly decision: Extract<PreToolDecision, { kind: 'deny' | 'ask' }>
 }
 
-/**
- * One matched call offered to the user for a decision. Carries everything a
- * confirmation channel needs to render the prompt and to cancel with the call.
- */
 export interface GuardConfirmRequest {
-  /** The pending call's tool name. */
   readonly toolName: string
-  /** The pending call's parsed arguments (object-normalized, as matched). */
   readonly args: Record<string, unknown>
-  /** The decisive guard match. */
   readonly hit: GuardHit
-  /** The guarded call's cancellation signal; an abort must settle the wait. */
+  /** The guarded call's cancellation; an abort must settle the wait. */
   readonly signal: AbortSignal
 }
 
 /**
  * Ask the user to decide one guard match, blocking the pre-execute waterfall.
- * `allow` releases the call via `next()`, `deny` blocks it with the hit's
- * reason, and `null` means "no user channel available" — the caller then falls
- * back to the hit's legacy decision (fail-safe, never fail-open). A throw is
- * treated as `deny` (fail closed), like an evaluation error.
+ * Returning `null` means "no user channel available", which the caller turns
+ * back into the hit's legacy decision — so this path can never widen what runs,
+ * and a throw is treated as `deny`.
  */
 export type GuardConfirmer = (req: GuardConfirmRequest) => Promise<'allow' | 'deny' | null>
-
 
 /**
  * Pure guard evaluation: the first active preset (deny presets first) whose
@@ -357,9 +377,7 @@ export function evaluateGuards(
  * @param active - the guard ids resolved active for this agent.
  * @param onHit - invoked with the preset id each time a call is denied/asked.
  * @param confirmer - optional blocking user-confirmation channel; when present,
- *   every match is offered to the user first and their answer wins over the
- *   preset's fixed action. `null` (no channel) falls back to the legacy
- *   decision, and a throw fails closed to deny.
+ *   the user's answer wins over the preset's fixed action.
  * @returns a disposer array: one listener disposer when any guard is active,
  *   empty when none are (nothing installed).
  */
@@ -397,11 +415,9 @@ export function applyGuards(
         /* ignore hit-tally failures; the decision below stands */
       }
       if (confirmer === undefined) return Promise.resolve(hit.decision)
-      // The user decision path: block until answered. `allow` delegates to
-      // next() — this listener must not CLAIM allow, because later pre-execute
-      // listeners and the registry's monotonic guards still get their say.
-      // Anything that prevents an answer (no channel, throw, abort) resolves to
-      // the legacy decision or a deny; it can never widen what runs.
+      // `allow` delegates to next() — this listener must not CLAIM allow,
+      // because later pre-execute listeners and the registry's monotonic guards
+      // still get their say.
       const argObj: Record<string, unknown> =
         exec.arguments !== null && typeof exec.arguments === 'object'
           ? (exec.arguments as Record<string, unknown>) : {}

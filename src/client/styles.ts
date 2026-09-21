@@ -47,6 +47,7 @@ const CSS = `
 .dshct-confirm-reason{font-size:12px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
 .dshct-confirm-detail{margin:0;max-height:160px;overflow:auto;padding:8px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-subtle,rgba(0,0,0,.03));font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:11.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--dsw-alias-label-primary)}
 .dshct-confirm-waiting{font-size:11.5px;color:var(--dsw-alias-label-tertiary)}
+.dshct-confirm-error{font-size:11.5px;line-height:1.45;color:var(--dsw-alias-danger,#e5484d)}
 .dshct-confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:2px}
 .dshct-confirm-btn{padding:6px 14px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:12.5px;font-weight:500;cursor:pointer;transition:background .15s ease,opacity .15s ease}
 .dshct-confirm-btn:disabled{opacity:.5;cursor:default}

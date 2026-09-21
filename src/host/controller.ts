@@ -52,8 +52,7 @@ export class ControllerRegistry {
    * @param store - the shared override store.
    * @param hostCtx - this plugin's context, whose `skills`/`tools` inject each
    *   binding borrows through a scope minted onto the agent's scope key.
-   * @param center - the shared blocking-confirmation registry handed to every
-   *   binding (optional; a binding without one keeps legacy deny/ask).
+   * @param center - the shared blocking-confirmation registry (optional).
    * @param onDrift - optional warn-once sink handed to every binding's inventory
    *   read, so an unexpected framework shape alarms once instead of silently
    *   yielding an empty capability list.

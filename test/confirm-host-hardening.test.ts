@@ -263,6 +263,10 @@ for (const trigger of ['response-close', 'response-error', 'request-error', 'req
 }
 
 test('a failing SSE heartbeat drops the channel without an uncaught exception', async (t) => {
+  // The heartbeat is created BEFORE the center subscription on purpose: a
+  // subscribe that ends the sink immediately (dead socket, or an already-disposed
+  // center replaying into it) must still find a timer to clear. Creating it after
+  // `subscribe` leaves the interval running forever in exactly that case.
   t.mock.timers.enable({ apis: ['setInterval'] })
   const h = httpHarness()
   t.after(() => { h.dispose(); h.center.dispose() })

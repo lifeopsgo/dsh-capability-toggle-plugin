@@ -6,24 +6,8 @@
  * whose `decide()` short-circuits to `'rejected'` the instant the session's
  * effective approval policy is `'never'` (the `danger-full-access` permission
  * preset) — BEFORE the `approval/request` waterfall is dispatched, so the
- * browser answerer is never consulted and NO prompt is shown. The user sees the
- * call silently blocked with `the user rejected tool "bash"`. That is correct
- * DSH behavior for `never`, but it makes every `ask` guard useless under it.
- *
- * This module gives the plugin its OWN confirmation path that is independent of
- * the approval policy: a guard match registers a pending confirmation, the call
- * BLOCKS in the `tools/pre-execute` listener until a browser answers over an SSE
- * push + POST respond pair, and the answer (`allow`/`deny`) becomes the
- * decision. Because it never enters the approval waterfall, `never` cannot
- * swallow it.
- *
- * Fallback: when no browser is subscribed for the session (`hasChannel` false —
- * headless, or the panel was never opened), the caller does NOT block; it falls
- * back to the legacy decision (deny stays deny, ask stays ask), so a headless
- * turn can never hang forever waiting for a channel that will never arrive.
- *
- * Pure host logic: the SSE transport is a two-method {@link SseSink}, so this
- * module is unit-testable without any node:http objects.
+ * browser answerer is never consulted and NO prompt is shown. So this module
+ * registers the confirmation itself, outside the approval policy.
  *
  * @module dsh-capability-toggle-plugin/host/confirm
  */
@@ -31,39 +15,29 @@
 import { randomUUID } from 'node:crypto'
 
 import type { GuardConfirmRequest, GuardConfirmer } from './guards.ts'
+import { SHELL_TOOLS } from './guards.ts'
 
-/** The write side of one Server-Sent Events connection. */
 export interface SseSink {
   /** Write one already-framed SSE chunk; false when the socket is gone. */
   write(chunk: string): boolean
-  /** Close the stream. */
   end(): void
 }
 
-/** What a guard match pushes to the browser so the user can decide. */
 export interface ConfirmPayload {
-  /** The winning `guard:<name>` id. */
   readonly guardId: string
-  /** The preset's fixed action, so the card can label block vs confirm. */
   readonly guardAction: 'deny' | 'ask'
-  /** The model-facing reason text. */
   readonly reason: string
-  /** The guarded tool name. */
   readonly toolName: string
-  /** Human-readable detail (full shell command, or bounded JSON args). */
+  /** Full shell command, or JSON args bounded to {@link DETAIL_LIMIT}. */
   readonly detail: string
 }
 
-/** One pending confirmation, as the browser sees it. */
 export interface PendingConfirm extends ConfirmPayload {
-  /** Opaque id correlating a respond POST back to this request. */
   readonly id: string
 }
 
-/** How a blocking confirmation settled. */
 export type ConfirmOutcome = 'allow' | 'deny' | 'cancelled'
 
-/** Settle one pending confirmation exactly once. */
 type Settle = (outcome: ConfirmOutcome) => void
 
 interface Entry {
@@ -72,20 +46,17 @@ interface Entry {
   readonly settle: Settle
 }
 
-/** Upper bound on the pushed detail text, so a huge arg cannot bloat SSE. */
-const DETAIL_LIMIT = 8000
-
 /**
- * Build the human detail for one guarded call: the full command for shell tools
- * (the user explicitly chose full-command disclosure), else bounded JSON of the
- * arguments. Never throws — a hostile `arguments` object degrades to `String()`.
- * @param toolName - the guarded tool.
- * @param args - the call's parsed arguments.
- * @returns the detail text, bounded to {@link DETAIL_LIMIT} characters.
+ * Build the human detail for one guarded call.
+ *
+ * A shell command is returned VERBATIM: truncating it would hide a dangerous
+ * suffix (a long heredoc whose final line is `rm -rf /`) from the user who is
+ * being asked to approve that exact command. Non-shell arguments are bounded,
+ * because a `write` call carries a whole file body that no card can show.
  */
 export function buildConfirmDetail(toolName: string, args: Record<string, unknown>): string {
-  if ((toolName === 'bash' || toolName === 'pwsh') && typeof args['command'] === 'string') {
-    return bound(args['command'] as string)
+  if (SHELL_TOOLS.has(toolName) && typeof args['command'] === 'string') {
+    return args['command'] as string
   }
   let json: string
   try {
@@ -96,6 +67,9 @@ export function buildConfirmDetail(toolName: string, args: Record<string, unknow
   return bound(json)
 }
 
+/** Upper bound on pushed non-shell detail, so a huge arg cannot bloat SSE. */
+const DETAIL_LIMIT = 8000
+
 function bound(text: string): string {
   return text.length <= DETAIL_LIMIT ? text : `${text.slice(0, DETAIL_LIMIT)}…`
 }
@@ -103,8 +77,7 @@ function bound(text: string): string {
 /**
  * Registry of live confirmations and their browser channels, keyed by session.
  * One instance per Host activation, shared by every agent binding and the HTTP
- * routes. All operations are synchronous except the promise a {@link request}
- * returns, which settles on respond/abort/dispose.
+ * routes.
  */
 export class ConfirmationCenter {
   private readonly channels = new Map<string, Set<SseSink>>()
@@ -112,7 +85,6 @@ export class ConfirmationCenter {
   private readonly disposers = new WeakMap<SseSink, () => void>()
   private disposed = false
 
-  /** Whether at least one browser is subscribed for this session right now. */
   hasChannel(session: string): boolean {
     const set = this.channels.get(session)
     return set !== undefined && set.size > 0
@@ -151,11 +123,8 @@ export class ConfirmationCenter {
 
   /**
    * Register a blocking confirmation for a session. Resolves when a browser
-   * answers, the caller's signal aborts, or the center is disposed.
-   * @param session - the session id whose browser should answer.
-   * @param payload - what to show the user.
-   * @param signal - the guarded call's cancellation; an abort settles `cancelled`.
-   * @returns the outcome; `cancelled` covers both abort and dispose.
+   * answers, the caller's signal aborts, or the center is disposed; `cancelled`
+   * covers both abort and dispose.
    */
   request(session: string, payload: ConfirmPayload, signal?: AbortSignal): Promise<ConfirmOutcome> {
     if (signal?.aborted || this.disposed) return Promise.resolve('cancelled')
@@ -191,14 +160,7 @@ export class ConfirmationCenter {
     })
   }
 
-  /**
-   * Answer one pending confirmation (first-wins). Unknown id, wrong session, or
-   * an already-settled id all return false and change nothing.
-   * @param session - the session the confirmation belongs to.
-   * @param id - the confirmation id from the SSE push.
-   * @param decision - the user's choice.
-   * @returns whether this call settled the confirmation.
-   */
+  /** Answer one pending confirmation (first-wins); false if it never existed or already settled. */
   respond(session: string, id: string, decision: 'allow' | 'deny'): boolean {
     const entry = this.pending.get(session)?.get(id)
     if (entry === undefined) return false
@@ -206,7 +168,6 @@ export class ConfirmationCenter {
     return true
   }
 
-  /** The live confirmations for a session, in registration order. */
   pendingFor(session: string): PendingConfirm[] {
     return [...(this.pending.get(session)?.values() ?? [])].map(e => ({ id: e.id, ...e.payload }))
   }
@@ -215,10 +176,7 @@ export class ConfirmationCenter {
     return this.disposed
   }
 
-  /**
-   * Tear down the center: cancel every pending confirmation and end every
-   * sink. Called on plugin unload so no blocked call outlives the plugin.
-   */
+  /** Cancel every pending confirmation and end every sink; called on plugin unload. */
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
@@ -262,26 +220,13 @@ function confirmEvent(entry: Entry): Record<string, unknown> {
 
 /**
  * Build the {@link GuardConfirmer} one agent binding hands to `applyGuards`.
- * It is a pure factory over the center plus the session id, so the fallback
- * (no-channel) and answer-mapping logic is unit-testable without a live agent.
  *
- * The contract: when no browser is subscribed for the session it answers `null`
- * — the caller's signal to fall back to the preset's legacy decision, so a
- * headless turn never blocks on a channel that will never arrive. When a browser
- * IS subscribed it registers a blocking confirmation and maps the outcome:
- * `allow` passes through, while `deny` AND `cancelled` (turn aborted or plugin
- * disposed mid-wait) both map to `deny`, so a settled-by-cancellation call can
- * never slip through as consent.
- *
- * If the center is already disposed or the caller's signal is already aborted
- * at the moment of the call, the confirmer answers `deny` immediately — a
- * disposed/aborted state must never silently downgrade to the legacy `ask`
- * fallback, because that would let a `never`-policy session's blocked call
- * slip through as consent.
- *
- * @param center - the shared confirmation registry.
- * @param session - the session id whose browser should answer.
- * @returns a confirmer closure capturing both.
+ * Returning `null` (no browser subscribed) means "fall back to the preset's
+ * legacy decision" rather than blocking a headless turn forever. `deny` and
+ * `cancelled` both map to `deny` so a cancellation can never read as consent,
+ * and an already-disposed/aborted call denies outright instead of downgrading
+ * to the legacy `ask` fallback — that downgrade would let a `never`-policy
+ * session's blocked call slip through.
  */
 export function makeGuardConfirmer(
   center: ConfirmationCenter,
