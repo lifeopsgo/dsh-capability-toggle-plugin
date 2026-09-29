@@ -4,6 +4,74 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] - 2026-09-29
+
+### Added
+
+- **One-time automatic import of legacy settings — upgrading no longer loses
+  your toggles.** DSH 0.2 moved plugin persistence to the `configEditor`
+  profile seam and set the old settings file aside as
+  `settings.yaml.imported`; without a bridge, every stance stored by 1.x
+  would silently fall back to enabled on upgrade. On the first start after
+  upgrading, the plugin now reads the `capability-toggle` section of that
+  file:
+
+  - imported stances take effect immediately (reads overlay the pending
+    merge), so enforcement is correct before the first write lands;
+  - the merge and its one-time completion marker commit inside the
+    `configEditor` profile lock — stances you had already changed in the new
+    config win key-by-key, and the profile is never rewritten once the marker
+    is live;
+  - a first user write finalizes the migration under the same lock, so the
+    asynchronous import can never resurrect a value you deliberately cleared;
+  - a missing legacy file imports nothing; structurally invalid data logs a
+    non-sensitive warning, writes no completion marker, and keeps DSH fully
+    usable (availability first) — fix the source file and restart to retry;
+  - a malformed project/session entry is skipped on its own instead of
+    invalidating the whole document, so one stale bucket can no longer drop
+    the rest of your stances.
+
+### Changed
+
+- **Target DSH 0.2.0-rc.1 only.** Every DSH peer dependency is pinned to
+  `0.2.0-rc.1`, and the Host now runs on that release's persistence and
+  lifecycle seams: persistent `configEditor` edits, Loader volatile-config
+  updates, and the `agent/created` lifecycle. Those seams do not exist in
+  DSH 0.1.x — stay on 1.x there. The Node requirement is now
+  `^22.19.0 || >=24.0.0`, matching the host.
+
+### Fixed
+
+- **Panel writes and the migration could not find the plugin's configuration
+  entry on 0.2.0-rc.1.** Nested entries carry a composite id
+  (`include:<patchId>`), and the store matched on it, so every persistent
+  write failed with "configuration entry is unavailable". The store now
+  matches the Loader's stable `options.id` (the patch-id namespace),
+  verified against the installed `cordis-plugin-loader` types and the live
+  Config Inspect manifest, and reproduced as a failing test before the fix.
+- **Fail-open window during capability reconcile.** Refreshing an agent's
+  inventory must lift the tool restriction and skill shadows to read the
+  pristine capability set, and they were only reinstalled after an async
+  collect — a call arriving inside that gap could execute a capability the
+  user had switched off. A capability gate now closes the window: a scoped,
+  prepended `tools/pre-execute` listener installed in the same synchronous
+  tick as the dispose, which re-reads the store on every call and fails
+  closed when evaluation throws. The guard presets already carried this
+  contract; the default-on seams now share it.
+- **First-turn enforcement for new agents.** Initial binding now runs inside
+  the serial, awaited `agent/created` event, so restrictions are in place
+  before the agent's first turn sees any tool; binding failures are logged
+  and swallowed so they never reject agent creation.
+- **A stale disposal could drop a replacement binding.** `agent/disposed` now
+  fences on the exact `Agent` instance, so a late disposal for a reused
+  session id no longer destroys its successor's enforcement.
+
+Every fix above was reproduced as a failing test before being fixed. The
+suite grew to 363 tests (including shipped-bundle assertions); Host + Client
+typechecks, the production build, and the 185-package framework-link check
+all pass, and findings from the independent adversarial review rounds were
+verified against source before adoption.
+
 ## [1.5.0] - 2026-09-19
 
 ### Added
@@ -635,6 +703,7 @@ Host and client bundles are byte-identical.
 dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v0.1.0
 ```
 
+[2.0.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v2.0.0
 [1.3.2]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.3.2
 [1.3.1]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.3.1
 [1.3.0]: https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases/tag/v1.3.0

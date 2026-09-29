@@ -5,7 +5,7 @@
 **Control agent capabilities from the DSH WebUI — with real runtime enforcement.**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#quick-start)
-![tests](https://img.shields.io/badge/tests-334%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-363%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -23,27 +23,23 @@ A **DeepSeek Harness (DSH) WebUI** plugin for controlling **skills, MCP servers,
 
 ## Compatible DSH versions
 
-One build serves the whole 0.1.x line. The composer slot's owner share changed at
-DSH 0.1.2 — the `session` snapshot object was dropped in favor of the framework's
-`sessionId` prop and `useSession` hook — and this plugin reads both shapes.
+This release targets **DSH 0.2.0-rc.1**. Every DSH peer dependency is pinned to that
+release candidate. The Host uses the `agent/created` lifecycle, persistent
+`configEditor` edits, and Loader volatile-config updates; each committed change
+reconciles every live agent binding.
 
 | DSH version | Status | How it was checked |
 | --- | --- | --- |
-| 0.1.1-rc.2 | supported | unit tests, typecheck, build, and a real browser session (panel rendered, toggles written) |
-| 0.1.2-rc.1 | supported | unit tests, typecheck (Host and Client faces), and a load check against an installed 0.1.2 host; the browser run above was on 0.1.1 only |
-| 0.1.3-alpha.1 / -alpha.2 | supported | every DSH symbol this plugin consumes was diffed from 0.1.2-rc.1 to current HEAD and is unchanged; not built or run against an installed 0.1.3 host |
-| 0.1.5-alpha.x / -rc.x | supported | Host and Client typecheck, build, and a symbol-by-symbol diff of every DSH surface this plugin consumes against real 0.1.5-rc.2 packages: `createScope`/`scopeOf`, `tools/pre-execute`, `tools/result`, `PreToolDecision`, `ApprovalOutcome`, and `session.header.cwd` are byte-identical to 0.1.1; `approval/request` changed its receiver (`Scoped<ApprovalService>` → `Scoped<Agent>`) and payload name (`ApprovalRequest` → `ApprovalRequestEvent`), which does not reach this plugin because its listener reads neither. Not run against an installed 0.1.5 host |
+| 0.2.0-rc.1 | supported | Host and Client typechecks, 363 automated tests, production build, framework-link validation, composed-profile inspection, and browser verification |
 
-The declared `peerDependencies` admit all of the above, including the prereleases
-npm publishes as `next` (0.1.5-rc.2) and `alpha` (0.1.5-alpha.2), and reject
-0.2.0 and later.
+This release makes no compatibility claim for other DSH versions.
 
 ## Quick start
 
-Requires **Node.js ≥ 22.6**.
+Requires **Node.js ^22.19.0 or ≥ 24.0.0** (same as DSH 0.2.0-rc.1).
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.5.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.0
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -59,7 +55,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.5.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.0
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin

@@ -22,9 +22,9 @@ import {
 } from '../src/host/inventory.ts'
 import { applyPromptGates, collectPromptGates } from '../src/host/prompt.ts'
 import { applyCallStats } from '../src/host/stats.ts'
+import { applyCapabilityGate, evaluateCapabilityGate } from '../src/host/capability-gate.ts'
 import { APPROVAL_GATE_ID, applyApprovalGate, collectApprovalGate } from '../src/host/approval.ts'
 import { OverrideStore, writeMap } from '../src/host/store.ts'
-import { SETTINGS_NAMESPACE, StoredDocumentSchema } from '../src/host/config.ts'
 import { parseSetBody, parseSetManyBody } from '../src/host/http.ts'
 import { SCOPE_IDENTITY_DRIFT_KEY, scopeIdentityDrift } from '../src/host/self-check.ts'
 import type { LayeredOverrides, CapabilityDescriptor } from '../src/shared/types.ts'
@@ -280,49 +280,6 @@ test('writeMap does not mutate its input', () => {
   assert.deepEqual(out, { 'tool:x': 'off', 'tool:y': 'on' })
 })
 
-// --- DSH version compatibility: the settings-namespace registration seam ------
-
-test('store.ts does not import the settingsNamespace factory removed in DSH 0.1.2', async () => {
-  const { readFileSync } = await import('node:fs')
-  const src = readFileSync(new URL('../src/host/store.ts', import.meta.url), 'utf8')
-  // DSH 0.1.2 dropped the exported `settingsNamespace()` branding factory; an
-  // ESM named import of a removed export fails at module link time, taking down
-  // the whole Host bundle (and collapsing this test file to its importable subset).
-  assert.ok(
-    !/import\s*{[^}]*\bsettingsNamespace\b[^}]*}\s*from\s*'@deepseek-ai\/dsh-settings'/.test(src),
-    'store.ts still named-imports settingsNamespace — removed in DSH 0.1.2; register the namespace as a plain string',
-  )
-})
-
-test('OverrideStore registers its namespace by passing the plain string to settings.register', () => {
-  // Both DSH 0.1.1 (ns: branded SettingsNamespace) and 0.1.2 (ns: literal-typed
-  // string, self-validating) treat the namespace as a plain string at runtime —
-  // the old factory was a compile-time brand only (it returned its argument).
-  // Passing SETTINGS_NAMESPACE unchanged is therefore correct on both.
-  const calls: unknown[][] = []
-  const ctx = {
-    settings: {
-      register(...args: unknown[]) {
-        calls.push(args)
-        return {
-          get: () => ({ global: {}, projects: {}, sessions: {} }),
-          watch: () => () => {},
-          update: async () => {},
-          replace: async () => {},
-        }
-      },
-    },
-  }
-  new OverrideStore(ctx as never)
-  // DSH 0.1.2's register() self-validates the namespace against this pattern
-  // and throws TypeError on a miss, so the constant must stay a lowercase
-  // hyphenated identifier even though 0.1.1 only checked it in the old factory.
-  assert.match(SETTINGS_NAMESPACE, /^[a-z][a-z0-9-]*$/)
-  assert.equal(calls.length, 1, 'settings.register must be called exactly once')
-  assert.equal(calls[0]?.[0], SETTINGS_NAMESPACE, 'namespace must be passed as the plain string')
-  assert.equal(calls[0]?.[1], StoredDocumentSchema, 'schema must be the stored-document schema')
-})
-
 // --- peer range must admit the DSH prereleases users actually run ------------
 
 // A minimal semver `satisfies` for the comparator forms this manifest uses
@@ -434,8 +391,8 @@ test('every DSH peer range admits the prereleases users actually run', async () 
   // every DSH tuple needs the `>=0.1.N-0` anchor below. v1.1.0's range rejected
   // the 0.1.2/0.1.3 prereleases (fixed in v1.2.1); the same drift recurred when
   // the line moved to 0.1.5, so this list grows with each tuple DSH ships.
-  const mustAdmit = ['0.1.0-rc.8', '0.1.1-rc.2', '0.1.2-rc.1', '0.1.3-alpha.1', '0.1.3-alpha.2', '0.1.2', '0.1.3', '0.1.5-alpha.1', '0.1.5-alpha.2', '0.1.5-rc.1', '0.1.5-rc.2', '0.1.5']
-  const mustReject = ['0.2.0-rc.1', '0.2.0', '0.1.0-rc.7', '0.0.1-rc.1']
+  const mustAdmit = ['0.2.0-rc.1']
+  const mustReject = ['0.2.0', '0.1.5', '0.1.5-rc.2', '0.0.1-rc.1']
   for (const [name, range] of dshPeers) {
     for (const v of mustAdmit) assert.ok(satisfies(v, range), `${name}@${v} must satisfy ${range}`)
     for (const v of mustReject) assert.ok(!satisfies(v, range), `${name}@${v} must NOT satisfy ${range}`)
@@ -457,7 +414,7 @@ test('the DSH peer ranges are all one string, so widening stays uniform', async 
   // Skills tab. All DSH peers must therefore carry the identical range.
   assert.equal(dshRanges.size, 1, 'every @deepseek-ai/dsh-* peer must share one range')
   // cordis and schemastery are versioned independently and stay out of this.
-  assert.match(pkg.peerDependencies['@deepseek-ai/cordis'] as string, /^\^4\./)
+  assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '~4.0.4')
 })
 
 // --- collectPromptGates probe (H4) ------------------------------------------
@@ -1384,6 +1341,159 @@ test('applyGuards listener passes a non-matching call through via next()', async
   assert.equal((decision as { kind: string }).kind, 'allow')
 })
 
+// ---- capability gate: the reconcile-window enforcement seam ----
+//
+// WHY THIS SEAM EXISTS: reconcile() disposes the schema-level tools.restrict
+// and skill shadows before it can read the pristine inventory through them,
+// and only re-installs them after an ASYNC collect (skills.snapshot awaits, so
+// the event loop yields). A call arriving inside that window would execute a
+// capability the user switched off — a fail-open gap between two enforcement
+// generations. The gate is a scoped tools/pre-execute listener installed in
+// the SAME synchronous tick as the dispose (reconcile's head, before its first
+// await), and it re-reads the store on every call, so it needs no inventory
+// and cannot go stale across a volatile update.
+//
+// Deliberate asymmetry, mirroring evaluateGuards' fail-closed contract: a call
+// that cannot be attributed to any capability switch id PASSES (no stored
+// stance can apply to it), while a call that CAN be attributed but whose
+// evaluation throws (a hostile `arguments` getter, a throwing store read) is
+// DENIED — an enforcement seam must never widen what is allowed.
+
+/**
+ * Fake scoped context for applyCapabilityGate: records the tools/pre-execute
+ * registration (event + prepend flag) and exposes the listener for calling,
+ * the same capture pattern fakeGuardCtx uses for the guard seam.
+ */
+function fakeGateCtx(): {
+  ctx: Parameters<typeof applyCapabilityGate>[0]
+  onCalls: Array<{ event: string; prepend: boolean }>
+  listener: ((exec: unknown, next: () => Promise<unknown>) => unknown) | null
+  disposed: () => boolean
+} {
+  const rec: {
+    onCalls: Array<{ event: string; prepend: boolean }>
+    listener: ((exec: unknown, next: () => Promise<unknown>) => unknown) | null
+    disposals: number
+  } = { onCalls: [], listener: null, disposals: 0 }
+  const ctx = {
+    on: (
+      event: string,
+      listener: (exec: unknown, next: () => Promise<unknown>) => unknown,
+      opts?: { prepend?: boolean },
+    ) => {
+      rec.onCalls.push({ event, prepend: opts?.prepend === true })
+      rec.listener = listener
+      return () => { rec.disposals += 1 }
+    },
+  }
+  return {
+    ctx: ctx as unknown as Parameters<typeof applyCapabilityGate>[0],
+    get onCalls() { return rec.onCalls },
+    get listener() { return rec.listener },
+    disposed: () => rec.disposals === 1,
+  }
+}
+
+test('evaluateCapabilityGate denies a call to a disabled plain tool', () => {
+  const decision = evaluateCapabilityGate(
+    () => layered({}, {}, { 'tool:bash': 'off' }),
+    { name: 'bash', arguments: { command: 'echo hi' } },
+  )
+  assert.equal(decision.action, 'deny')
+  assert.match((decision as { reason: string }).reason, /tool:bash/)
+})
+
+test('evaluateCapabilityGate denies an MCP member call through its server switch', () => {
+  const decision = evaluateCapabilityGate(
+    () => layered({}, { 'mcp:github': 'off' }, {}),
+    { name: 'mcp__github__search_issues', arguments: { q: 'x' } },
+  )
+  assert.equal(decision.action, 'deny')
+  assert.match((decision as { reason: string }).reason, /mcp:github/)
+})
+
+test('evaluateCapabilityGate denies a skill invocation through the skill tool argument', () => {
+  const decision = evaluateCapabilityGate(
+    () => layered({ 'skill:research': 'off' }, {}, {}),
+    { name: 'skill', arguments: { name: 'research' } },
+  )
+  assert.equal(decision.action, 'deny')
+  assert.match((decision as { reason: string }).reason, /skill:research/)
+})
+
+test('evaluateCapabilityGate passes enabled, inherited, and unattributable calls', () => {
+  assert.deepEqual(
+    evaluateCapabilityGate(() => layered(), { name: 'bash', arguments: {} }),
+    { action: 'pass' },
+  )
+  assert.deepEqual(
+    evaluateCapabilityGate(() => layered({}, {}, { 'tool:bash': 'on' }), { name: 'bash', arguments: {} }),
+    { action: 'pass' },
+  )
+  // A `skill` tool call whose `name` argument is not a string cannot be
+  // attributed to any switch id, so no stored stance can apply: pass through.
+  assert.deepEqual(
+    evaluateCapabilityGate(() => layered(), { name: 'skill', arguments: { name: 42 } }),
+    { action: 'pass' },
+  )
+})
+
+test('evaluateCapabilityGate reads the store lazily and fails closed on a throwing read', () => {
+  // The throwing provider below proves the store read is DEFERRED until an id
+  // resolves: an unattributable call must never touch the store.
+  assert.deepEqual(
+    evaluateCapabilityGate(() => { throw new Error('store read must be lazy') }, { name: 123, arguments: {} }),
+    { action: 'pass' },
+  )
+  // A hostile `arguments` getter on an attributable call must fail closed.
+  const hostileArgs = { name: 'bash', get arguments() { throw new Error('hostile getter') } }
+  assert.equal(evaluateCapabilityGate(() => layered(), hostileArgs).action, 'deny')
+  // A store read that throws on an attributable call must fail closed too —
+  // the enforcement seam never widens what is allowed.
+  assert.equal(
+    evaluateCapabilityGate(() => { throw new Error('store down') }, { name: 'bash', arguments: {} }).action,
+    'deny',
+  )
+})
+
+test('applyCapabilityGate installs one prepended pre-execute listener and returns its disposer', () => {
+  const f = fakeGateCtx()
+  const dispose = applyCapabilityGate(f.ctx, () => layered())
+  assert.equal(f.onCalls.length, 1)
+  assert.equal(f.onCalls[0]?.event, 'tools/pre-execute')
+  // PREPEND is the enforcement-priority contract the guard seam already
+  // follows: a later-registered listener must never claim a call the gate
+  // would deny.
+  assert.equal(f.onCalls[0]?.prepend, true)
+  dispose()
+  assert.equal(f.disposed(), true)
+})
+
+test('applyCapabilityGate listener denies a disabled call without claiming next()', async () => {
+  const f = fakeGateCtx()
+  applyCapabilityGate(f.ctx, () => layered({}, {}, { 'tool:bash': 'off' }))
+  let nextCalls = 0
+  const decision = await f.listener!(
+    { name: 'bash', arguments: {} },
+    () => { nextCalls += 1; return Promise.resolve({ kind: 'allow' }) },
+  ) as { kind: string; reason: string }
+  assert.equal(nextCalls, 0)
+  assert.equal(decision.kind, 'deny')
+  assert.match(decision.reason, /tool:bash/)
+})
+
+test('applyCapabilityGate listener delegates a pass decision to next()', async () => {
+  const f = fakeGateCtx()
+  applyCapabilityGate(f.ctx, () => layered())
+  let nextCalls = 0
+  const decision = await f.listener!(
+    { name: 'read', arguments: {} },
+    () => { nextCalls += 1; return Promise.resolve({ kind: 'allow' }) },
+  )
+  assert.equal(nextCalls, 1)
+  assert.equal((decision as { kind: string }).kind, 'allow')
+})
+
 // ---- call-usage stats: the tools/result observation seam ----
 
 /**
@@ -1586,6 +1696,7 @@ test('the shipped bundle installs stats before reconcile awaits', async () => {
   const head = built.slice(start, end)
   assert.ok(head.includes('this.installGuards()'), 'guard install missing from reconcile')
   assert.ok(head.includes('this.installCallStats()'), 'stats install missing from reconcile')
+  assert.ok(head.includes('this.installCapabilityGate()'), 'capability gate install missing from reconcile')
   assert.ok(head.indexOf('this.installCallStats()') < head.indexOf('await'),
     'stats install must run before reconcile awaits')
 })

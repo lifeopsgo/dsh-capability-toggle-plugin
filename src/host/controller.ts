@@ -1,6 +1,6 @@
 /**
  * Registry of live agent bindings: one `AgentBinding` per live agent, tracked
- * across `agent/session-start` and `agent/disposed`. The per-agent enforcement
+ * across `agent/created` and `agent/disposed`. The per-agent enforcement
  * mechanics live in ./agent-binding.ts; this module only owns the lifecycle map
  * and the fan-out reconcile a store commit triggers.
  *
@@ -36,7 +36,7 @@ interface InventorySnapshot {
 
 /**
  * Registry of live agent bindings. One per Host activation; agents come and go
- * through `agent/session-start` and `agent/disposed`.
+ * through `agent/created` and `agent/disposed`.
  */
 export class ControllerRegistry {
   private readonly bindings = new Map<string, AgentBinding>()
@@ -71,6 +71,8 @@ export class ControllerRegistry {
    */
   async add(agent: Agent): Promise<AgentBinding> {
     const binding = new AgentBinding(this.store, this.hostCtx, agent, this.center, this.onDrift)
+    const existing = this.bindings.get(agent.session.id)
+    existing?.destroy()
     this.bindings.set(agent.session.id, binding)
     await binding.reconcile()
     return binding
@@ -78,11 +80,13 @@ export class ControllerRegistry {
 
   /**
    * Stop tracking an agent and drop its application (and its minted scope).
-   * @param sessionId - the disposed agent's session id.
+   * @param agent - the disposed agent.
    */
-  remove(sessionId: string): void {
+  remove(agent: Agent): void {
+    const sessionId = agent.session.id
     const binding = this.bindings.get(sessionId)
     if (binding === undefined) return
+    if (!binding.owns(agent)) return
     // Snapshot the agent's last pristine inventory BEFORE destroying it, so the
     // panel can still be read for this session once no agent is bound. Skip when
     // the binding never reconciled (null) — an empty snapshot would only mask
@@ -134,6 +138,11 @@ export class ControllerRegistry {
    */
   lastKnownProjectKey(sessionId: string): string | undefined {
     return this.lastKnown.get(sessionId)?.projectKey
+  }
+
+  disposeAll(): void {
+    for (const binding of this.bindings.values()) binding.destroy()
+    this.bindings.clear()
   }
 
   /** Re-apply the current decision to every tracked agent (store changed). */

@@ -17,8 +17,8 @@
  *
  * This is a Host-owned control channel, not model-visible state, so it lives off
  * the session log entirely (see host/config.ts for why the state is not a
- * session event). Every write lands in the settings namespace, whose commit
- * event drives reconcile on every affected agent.
+ * session event). Every write lands in the Loader configuration entry, whose
+ * volatile-update event drives reconciliation for every live agent.
  *
  * @module dsh-capability-toggle-plugin/host/http
  */

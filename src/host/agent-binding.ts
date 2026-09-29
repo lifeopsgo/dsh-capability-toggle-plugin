@@ -45,6 +45,7 @@ import {
 import { applyPromptGates } from './prompt.ts'
 import { applyApprovalGate } from './approval.ts'
 import { applyGuards, GUARD_IDS } from './guards.ts'
+import { applyCapabilityGate } from './capability-gate.ts'
 import { makeGuardConfirmer } from './confirm.ts'
 import type { ConfirmationCenter } from './confirm.ts'
 import { applyCallStats } from './stats.ts'
@@ -166,6 +167,10 @@ export class AgentBinding {
     return this.lastInventory
   }
 
+  owns(agent: Agent): boolean {
+    return this.agent === agent
+  }
+
   /**
    * Read the agent's PRISTINE inventory — the full set with our own
    * enforcement lifted. Only valid to call while `this.disposers` is empty
@@ -214,6 +219,7 @@ export class AgentBinding {
     // reconcile disposes this generation first, so latest-wins still holds.
     this.installGuards()
     this.installCallStats()
+    this.installCapabilityGate()
 
     const descriptors = await this.pristineInventory()
     if (gen !== this.generation) return
@@ -303,6 +309,11 @@ export class AgentBinding {
     this.disposers.push(applyCallStats(this.scopedCtx, (id) => {
       this.callHits.set(id, (this.callHits.get(id) ?? 0) + 1)
     }))
+  }
+
+  private installCapabilityGate(): void {
+    if (this.scopeKey === undefined) return
+    this.disposers.push(applyCapabilityGate(this.scopedCtx, () => this.store.layered(this.projectKey, this.sessionKey)))
   }
 
   /**

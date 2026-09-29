@@ -35,6 +35,22 @@ test('the plugin registers the center dispose so no blocked call outlives unload
     'the center dispose must be registered as an effect')
 })
 
+test('the controller destroys a replaced session binding before storing its successor', () => {
+  const controller = src('host/controller.ts')
+  assert.match(
+    controller,
+    /const existing = this\.bindings\.get\(agent\.session\.id\)\s*existing\?\.destroy\(\)\s*this\.bindings\.set\(agent\.session\.id, binding\)/s,
+  )
+})
+
+test('a stale disposal cannot remove a replacement binding for the same session', () => {
+  const controller = src('host/controller.ts')
+  const index = src('index.ts')
+  assert.match(controller, /remove\(agent: Agent\): void/)
+  assert.match(controller, /if \(!binding\.owns\(agent\)\) return/)
+  assert.match(index, /registry\.remove\(agent\)/)
+})
+
 test('the controller stores the center and passes it into every binding', () => {
   const controller = src('host/controller.ts')
   // The center is kept as a constructor parameter property, which is the store.
@@ -53,6 +69,24 @@ test('the binding builds a confirmer keyed on the SESSION, never the project', (
   assert.ok(call, 'the binding must build a guard confirmer')
   assert.match(call[1], /sessionKey/, `the confirmer must be keyed on sessionKey, saw: ${call[1]}`)
   assert.doesNotMatch(call[1], /projectKey/, 'the confirmer must never be keyed on the project key')
+})
+
+test('the binding installs a dynamic capability gate before async inventory refresh', () => {
+  const binding = src('host/agent-binding.ts')
+  // WHY: reconcile() disposes the schema restrict/shadows to read the pristine
+  // inventory through them and only re-installs them after an ASYNC collect
+  // (skills.snapshot yields). Without a gate installed in the SAME synchronous
+  // tick — before reconcile's first await — a call arriving in that window
+  // executes a capability the user switched off. The listener's own decision
+  // behaviour is covered behaviourally in pure.test.ts (evaluateCapabilityGate /
+  // applyCapabilityGate); this anchors the INSTALL SITE and its live store read.
+  const reconcile = binding.slice(binding.indexOf('async reconcile()'), binding.indexOf('const descriptors = await this.pristineInventory()'))
+  assert.match(reconcile, /this\.installCapabilityGate\(\)/)
+  assert.match(
+    binding,
+    /private installCapabilityGate\(\): void \{\s*if \(this\.scopeKey === undefined\) return\s*this\.disposers\.push\(applyCapabilityGate\(this\.scopedCtx, \(\) => this\.store\.layered\(this\.projectKey, this\.sessionKey\)\)\)\s*\}/,
+    'the gate must delegate to applyCapabilityGate with this agent\'s live layered read, and only on a real scope',
+  )
 })
 
 test('the binding installs the guard listener with the confirmer', () => {

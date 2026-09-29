@@ -8,7 +8,7 @@
  * still attempts it, so the effect is enforced, not merely hidden.
  *
  * Composition:
- *   - OverrideStore        durable three-level state in one settings namespace.
+ *   - OverrideStore        durable three-level state in the Loader config entry.
  *   - ControllerRegistry   per-agent enforcement on the tool and skill seams.
  *   - installHttp          the browser panel's read/write channel.
  *
@@ -20,8 +20,12 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 
+import { readLegacyOverridesSyncResult } from './host/legacy-migration.ts'
 import { OverrideStore } from './host/store.ts'
 import { ControllerRegistry } from './host/controller.ts'
+import { StoredDocumentSchema } from './host/config.ts'
+import type { OverrideConfig } from './host/config.ts'
+import type {} from '@deepseek-ai/dsh-config-editor'
 import { installHttp } from './host/http.ts'
 import { ConfirmationCenter } from './host/confirm.ts'
 import { checkRequiredServices, emitContractBanner, makeWarnOnce } from './host/self-check.ts'
@@ -30,21 +34,22 @@ import { checkRequiredServices, emitContractBanner, makeWarnOnce } from './host/
 export const name = 'dsh-capability-toggle-plugin'
 
 /**
- * Required services. `settings` backs the durable state, `tools` and `skills`
+ * Required services. `configEditor` backs the durable state, `tools` and `skills`
  * are the enforced seams, `systemPrompt` carries the tool-guidance section
  * shadow that accompanies a disabled tool, `agents` is unused directly but its
  * lifecycle events drive tracking, and `webServer` carries the browser panel
  * channel.
  */
-export const inject = ['settings', 'tools', 'skills', 'systemPrompt', 'webServer', 'connection']
+export const inject = ['agents', 'configEditor', 'tools', 'skills', 'systemPrompt', 'webServer', 'connection']
 
 /**
  * Host plugin body. Every contribution is an effect, so plugin unload (or HMR
- * hot-swap) tears down the routes, the settings observer, and every per-agent
- * application.
+ * hot-swap) tears down the routes and every per-agent application.
  * @param ctx - the Host root context.
  */
-export function apply(ctx: Context): void {
+export const Config = StoredDocumentSchema
+
+export function apply(ctx: Context, config: OverrideConfig): void {
   // One-time contract audit: name the framework assumptions enforcement rests on
   // (so an upgrade regression is greppable) and confirm the injected services
   // actually resolved (a miss means the inject contract itself moved upstream).
@@ -55,34 +60,42 @@ export function apply(ctx: Context): void {
   // alarms once, not once per agent per store commit.
   const onDrift = makeWarnOnce(ctx)
 
-  const store = new OverrideStore(ctx)
+  const legacy = readLegacyOverridesSyncResult()
+  if (legacy.status === 'invalid') {
+    ctx.logger.warn('capability-toggle could not read valid legacy overrides; continuing without legacy migration.')
+  }
+  const store = new OverrideStore(ctx, config, legacy.status === 'available' ? legacy.value : undefined)
   const center = new ConfirmationCenter()
   const registry = new ControllerRegistry(store, ctx, center, onDrift)
 
   ctx.effect(() => installHttp(ctx, store, registry, center), 'capability-toggle: http routes')
+  ctx.effect(() => () => registry.disposeAll(), 'capability-toggle: bindings')
   ctx.effect(() => () => center.dispose(), 'capability-toggle: confirmation center')
 
-  // A committed change at any level (from any client) re-applies enforcement to
-  // every live agent. The observer disposer is returned into the effect.
-  ctx.effect(
-    () => store.watch(() => {
-      void registry.reconcileAll().catch((error: unknown) => {
-        ctx.logger.warn(`capability-toggle reconcile failed: ${messageOf(error)}`)
-      })
-    }),
-    'capability-toggle: settings observer',
-  )
+  const bindAgent = async (agent: Parameters<typeof registry.add>[0], source: string): Promise<undefined> => {
+    try {
+      await registry.add(agent)
+    } catch (error) {
+      ctx.logger.warn(`capability-toggle failed to bind ${source}: ${messageOf(error)}`)
+    }
+    return undefined
+  }
 
-  // Track each agent for its whole lifetime. `agent/session-start` is the first
-  // point the agent scope exists and tools/skills can be restricted on it.
-  ctx.on('agent/session-start', ({ agent }) => {
-    void registry.add(agent).catch((error: unknown) => {
-      ctx.logger.warn(`capability-toggle failed to bind agent: ${messageOf(error)}`)
+  for (const agent of ctx.agents.list()) void bindAgent(agent, 'existing agent')
+  void store.migrateLegacy().catch((error: unknown) => {
+    ctx.logger.warn(`capability-toggle failed to migrate legacy overrides: ${messageOf(error)}`)
+  })
+
+  ctx.on('agent/created', ({ agent }) => bindAgent(agent, 'created agent'))
+
+  ctx.on('loader/volatile-update', () => {
+    void registry.reconcileAll().catch((error: unknown) => {
+      ctx.logger.warn(`capability-toggle failed to reconcile volatile override update: ${messageOf(error)}`)
     })
   })
 
   ctx.on('agent/disposed', ({ agent }) => {
-    registry.remove(agent.session.id)
+    registry.remove(agent)
   })
 }
 

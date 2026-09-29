@@ -5,7 +5,7 @@
 **在 DSH WebUI 中控制 agent 能力，并在运行时真正强制执行。**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#快速开始)
-![tests](https://img.shields.io/badge/tests-334%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-363%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -25,24 +25,20 @@
 
 ## 兼容的 DSH 版本
 
-一份构建同时服务整个 0.1.x 系列。DSH 0.1.2 改动了输入栏插槽的 owner 参数——不再传
-`session` 快照对象，改为框架标准的 `sessionId` 属性与 `useSession` hook——本插件两种
-形态都能读取。
+本版本面向 **DSH 0.2.0-rc.1**，全部 DSH peer 依赖均精确锁定到该 RC。Host 已迁移到 `agent/created` 生命周期、持久化 `configEditor` 写入和 Loader volatile 配置更新；每次写入都会重新协调全部仍存活的 agent binding。
 
 | DSH 版本 | 状态 | 验证方式 |
 | --- | --- | --- |
-| 0.1.1-rc.2 | 支持 | 单元测试、类型检查、构建，以及真实浏览器会话（面板渲染、开关写入） |
-| 0.1.2-rc.1 | 支持 | 单元测试、类型检查（Host 与 Client 两个编译面）、对已安装 0.1.2 宿主的加载检查；上述浏览器验证仅在 0.1.1 上做过 |
-| 0.1.3-alpha.1 / -alpha.2 | 支持 | 本插件消费的每个 DSH 符号都已从 0.1.2-rc.1 逐一对比到当前 HEAD，均未变化；未在已安装的 0.1.3 宿主上构建或运行 |
-| 0.1.5-alpha.x / -rc.x | 支持 | Host 与 Client 类型检查、构建，以及对真实的 0.1.5-rc.2 包逐一对比本插件消费的每个 DSH 符号：`createScope`/`scopeOf`、`tools/pre-execute`、`tools/result`、`PreToolDecision`、`ApprovalOutcome`、`session.header.cwd` 与 0.1.1 逐字节相同；`approval/request` 的接收者（`Scoped<ApprovalService>` → `Scoped<Agent>`）与载荷名（`ApprovalRequest` → `ApprovalRequestEvent`）有变化，但本插件的监听器两者都不读取，故不受影响。未在已安装的 0.1.5 宿主上运行 |
+| 0.2.0-rc.1 | 支持 | Host 与 Client 类型检查、363 项自动化测试、生产构建、框架链接校验、组合 profile 检查和浏览器验证 |
 
-声明的 `peerDependencies` 接纳以上全部版本，包括 npm 以 `next`（0.1.5-rc.2）和
-`alpha`（0.1.5-alpha.2）发布的预发布版，并拒绝 0.2.0 及以后。
+本版本不声明兼容其他 DSH 版本。
 
 ## 快速开始
 
+需要 **Node.js ^22.19.0 或 ≥ 24.0.0**（与 DSH 0.2.0-rc.1 相同）。
+
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.5.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.0
 dsh --profile web web
 ```
 
@@ -53,7 +49,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v1.5.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.0
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin

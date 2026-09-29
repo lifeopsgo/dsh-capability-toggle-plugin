@@ -6,7 +6,7 @@ Thanks for helping improve `dsh-capability-toggle-plugin`.
 
 Requirements:
 
-- Node.js 22.6 or newer
+- Node.js ^22.19.0 or ≥ 24.0.0 (same as DSH 0.2.0-rc.1)
 - pnpm 11
 
 ```bash

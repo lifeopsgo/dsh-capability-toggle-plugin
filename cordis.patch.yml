@@ -4,3 +4,4 @@
 - insert:
     - id: dsh-capability-toggle-plugin
       name: 'dsh-capability-toggle-plugin'
+      config: { global: {}, projects: {}, sessions: {} }

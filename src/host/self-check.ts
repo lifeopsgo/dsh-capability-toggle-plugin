@@ -46,7 +46,7 @@ export function scopeIdentityDrift(scopeKey: ScopeKey | undefined): string | nul
  */
 export const FRAMEWORK_CONTRACT = {
   /** Services whose absence makes the whole plugin fail to activate (via `inject`). */
-  requiredServices: ['settings', 'tools', 'skills', 'systemPrompt', 'webServer'] as const,
+  requiredServices: ['agents', 'configEditor', 'tools', 'skills', 'systemPrompt', 'webServer'] as const,
   /** Services probed non-strictly; absence degrades one family, not the plugin. */
   optionalServices: ['approval'] as const,
   /**
@@ -56,19 +56,19 @@ export const FRAMEWORK_CONTRACT = {
    */
   enforcementEvents: ['tools/pre-execute', 'approval/request'] as const,
   /**
-   * The agent-lifecycle events this plugin tracks. `agent/session-start` mints a
+   * The agent-lifecycle events this plugin tracks. `agent/created` mints a
    * binding; `agent/disposed` drops it (and its scope fiber + hit tally). The
    * disposed event is load-bearing for MEMORY: it is the only path that removes
    * a binding from the live map, so a rename/miss upstream would strand one
    * binding per agent that ever started — a slow leak with no runtime error.
    */
-  lifecycleEvents: ['agent/session-start', 'agent/disposed'] as const,
+  lifecycleEvents: ['agent/created', 'agent/disposed'] as const,
   /** The `Execution` field the pre-execute waterfall routes scope by. */
   scopeRoutingKey: 'exec.agent',
   /** The MCP public-tool name grammar the inventory groups servers by. */
   mcpNameGrammar: 'mcp__<server>__<tool>',
-  /** The settings namespace holding the three-level override document. */
-  settingsNamespace: 'capability-toggle',
+  /** The Loader entry holding the three-level override document. */
+  configEntry: 'dsh-capability-toggle-plugin',
 } as const
 
 /**
