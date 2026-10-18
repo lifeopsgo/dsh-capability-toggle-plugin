@@ -16,8 +16,11 @@
  *     disposing invalidates the skill catalog cache, so a mid-session toggle
  *     takes effect on the next agent step — no restart.
  *   - prompt: disabled plain tools shadow away their `tool:<name>` guidance
- *     section, and the curated prompt-gate family shadows sections/contexts or
- *     installs the runtime-context suppressor (see ./prompt.ts).
+ *     section, disabled MCP servers shadow away their `mcp:<server>`
+ *     instructions section (dsh-mcp-client registers the server-supplied
+ *     instructions block under exactly that name), and the curated prompt-gate
+ *     family shadows sections/contexts or installs the runtime-context
+ *     suppressor (see ./prompt.ts).
  *
  * Reconcile is latest-wins: any store change disposes the current application
  * and installs a fresh one from the current inventory and overrides.
@@ -40,9 +43,9 @@ import type {
 import { buildProjection, disabledIds, isGuardActive } from '../shared/resolve.ts'
 import {
   collectInventory, type DriftSink, deniedToolNames, disabledSkillNames,
-  disabledToolGuidanceSections,
+  disabledToolGuidanceSections, disabledMcpInstructionSections,
 } from './inventory.ts'
-import { applyPromptGates } from './prompt.ts'
+import { applyPromptGates, attemptShadow } from './prompt.ts'
 import { applyApprovalGate } from './approval.ts'
 import { applyGuards, GUARD_IDS } from './guards.ts'
 import { applyCapabilityGate } from './capability-gate.ts'
@@ -240,28 +243,47 @@ export class AgentBinding {
       }))
     }
 
-    // For each disabled plain tool, also shadow away its `tool:<name>` usage
-    // guidance section: an empty same-name scoped section wins the assembly
+    // Shadow away the prompt sections of every disabled plain tool and every
+    // disabled MCP server: an empty same-name scoped section wins the assembly
     // merge for this scope and is dropped at render, so the model no longer
-    // reads guidance for a tool it can no longer call. Purely cosmetic
-    // (token-saving) — a tool that ships no such section renders nothing.
+    // reads guidance for a tool it can no longer call, nor the instructions of
+    // an MCP server whose tools are already denied (those instructions
+    // otherwise keep commanding the model, e.g. "first call kb.recall"). Purely
+    // cosmetic alongside the deny (token-saving, stale-guidance-removing) — a
+    // section that does not exist simply has its empty shadow render to
+    // nothing, which is inert.
     //
-    // GATED ON A REAL SCOPE: a same-name section registered in the GLOBAL layer
-    // (scopeKey undefined -> scopedCtx is hostCtx) collides with the tool's own
-    // global registration and throws (duplicate name in one layer). Shadowing is
-    // a scope-chain override, so it is only valid when this agent has a scope.
+    // GATED ON A REAL SCOPE, and COLLISION-TOLERANT: registration throws when
+    // a same-name section is already registered in the SAME layer. With
+    // scopeKey undefined, scopedCtx is hostCtx — the global layer where the
+    // framework's own sections live — so the sweep is skipped. With a real
+    // agent scope the framework's registrations sit in the global or ancestor
+    // layers and the shadow wins the merge, but a same-name section registered
+    // through this exact agent scope (a per-agent composition like
+    // dsh-tool-subagent's `tool:subagent` guidance) still collides:
+    // attemptShadow then reports the skipped shadow and the sweep continues,
+    // because a cosmetic shadow must never abort the enforcement installed
+    // after it (the prompt gates and the approval lock).
     if (this.scopeKey !== undefined) {
-      for (const sectionName of disabledToolGuidanceSections(descriptors, disabled)) {
-        this.disposers.push(this.scopedCtx.systemPrompt.section({
-          name: sectionName,
-          order: GUIDANCE_SHADOW_ORDER,
-          text: '',
-        }))
+      for (const sectionName of [
+        ...disabledToolGuidanceSections(descriptors, disabled),
+        ...disabledMcpInstructionSections(descriptors, disabled),
+      ]) {
+        const dispose = attemptShadow(
+          () => this.scopedCtx.systemPrompt.section({
+            name: sectionName,
+            order: GUIDANCE_SHADOW_ORDER,
+            text: '',
+          }),
+          this.onDrift,
+          `prompt section "${sectionName}"`,
+        )
+        if (dispose !== undefined) this.disposers.push(dispose)
       }
       // Prompt-context family (curated allowlist): shadow disabled sections /
       // contexts with an empty same-name entry, or install the runtime-context
       // suppressor. Same scope-only rule as the guidance shadows above.
-      for (const dispose of applyPromptGates(this.scopedCtx, descriptors, disabled)) {
+      for (const dispose of applyPromptGates(this.scopedCtx, descriptors, disabled, this.onDrift)) {
         this.disposers.push(dispose)
       }
       // Approval gate: when `approval:policy` is off, install a scoped

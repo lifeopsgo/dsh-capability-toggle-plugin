@@ -5,7 +5,7 @@
 **在 DSH WebUI 中控制 agent 能力，并在运行时真正强制执行。**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#快速开始)
-![tests](https://img.shields.io/badge/tests-363%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-380%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -29,7 +29,7 @@
 
 | DSH 版本 | 状态 | 验证方式 |
 | --- | --- | --- |
-| 0.2.0-rc.1 | 支持 | Host 与 Client 类型检查、363 项自动化测试、生产构建、框架链接校验、组合 profile 检查和浏览器验证 |
+| 0.2.0-rc.1 | 支持 | Host 与 Client 类型检查、380 项自动化测试、生产构建、框架链接校验、组合 profile 检查和浏览器验证 |
 
 本版本不声明兼容其他 DSH 版本。
 
@@ -38,7 +38,7 @@
 需要 **Node.js ^22.19.0 或 ≥ 24.0.0**（与 DSH 0.2.0-rc.1 相同）。
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.1
 dsh --profile web web
 ```
 
@@ -49,7 +49,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.1
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -87,7 +87,8 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 
 | 能力族 | 强制方式 |
 | :-- | :-- |
-| `tool` / `mcp` | 通过 `ctx.tools.restrict({ deny })` 移除；强行调用被拒绝 |
+| `tool` | 通过 `ctx.tools.restrict({ deny })` 移除；强行调用被拒绝，`tool:<name>` 指导段同时被影子化移出提示词 |
+| `mcp` | 成员工具通过 `ctx.tools.restrict({ deny })` 移除；服务器的 `mcp:<server>` 指令段（即 `### MCP server: <名称>` 块，含「先调 kb.recall」这类强制指令）被影子化移出提示词；共享资源调用（`list_mcp_resources` / `list_mcp_resource_templates` / `read_mcp_resource`）点名已停用服务器时被拒绝 |
 | `skill` | 用同名 `modelInvocable:false` 运行时技能覆盖 |
 | `prompt` | 用空文本覆盖，或通过 `suppressRuntimeContext()` 抑制 |
 | `approval` | scoped 审批请求直接返回 `rejected` |

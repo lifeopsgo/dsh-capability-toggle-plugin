@@ -5,7 +5,7 @@
 **Control agent capabilities from the DSH WebUI — with real runtime enforcement.**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#quick-start)
-![tests](https://img.shields.io/badge/tests-363%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-380%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -30,7 +30,7 @@ reconciles every live agent binding.
 
 | DSH version | Status | How it was checked |
 | --- | --- | --- |
-| 0.2.0-rc.1 | supported | Host and Client typechecks, 363 automated tests, production build, framework-link validation, composed-profile inspection, and browser verification |
+| 0.2.0-rc.1 | supported | Host and Client typechecks, 380 automated tests, production build, framework-link validation, composed-profile inspection, and browser verification |
 
 This release makes no compatibility claim for other DSH versions.
 
@@ -39,7 +39,7 @@ This release makes no compatibility claim for other DSH versions.
 Requires **Node.js ^22.19.0 or ≥ 24.0.0** (same as DSH 0.2.0-rc.1).
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.1
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -55,7 +55,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.1
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -93,7 +93,8 @@ Every mechanism is scoped to the current agent; global registrations are not mut
 
 | Family | Enforcement |
 | :-- | :-- |
-| `tool` / `mcp` | Removed with `ctx.tools.restrict({ deny })`; forced calls are refused |
+| `tool` | Removed with `ctx.tools.restrict({ deny })`; forced calls are refused, and the tool's `tool:<name>` guidance section is shadowed out of the prompt |
+| `mcp` | Member tools removed with `ctx.tools.restrict({ deny })`; the server's `mcp:<server>` instructions section (its `### MCP server: <name>` block, including directives like "call kb.recall first") is shadowed out of the prompt, and shared resource calls (`list_mcp_resources` / `list_mcp_resource_templates` / `read_mcp_resource`) naming the switched-off server are refused |
 | `skill` | Shadowed by a same-named `modelInvocable:false` runtime skill |
 | `prompt` | Shadowed with empty text, or suppressed with `suppressRuntimeContext()` |
 | `approval` | Scoped approval requests resolve to `rejected` |

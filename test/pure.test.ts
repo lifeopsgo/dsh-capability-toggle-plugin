@@ -18,9 +18,10 @@ import {
   GUARD_IDS, applyGuards, collectGuards, evaluateGuards, guardId,
 } from '../src/host/guards.ts'
 import {
-  deniedToolNames, disabledSkillNames, disabledToolGuidanceSections, attributeCall,
+  deniedToolNames, disabledSkillNames, disabledToolGuidanceSections,
+  disabledMcpInstructionSections, attributeCall,
 } from '../src/host/inventory.ts'
-import { applyPromptGates, collectPromptGates } from '../src/host/prompt.ts'
+import { applyPromptGates, attemptShadow, collectPromptGates } from '../src/host/prompt.ts'
 import { applyCallStats } from '../src/host/stats.ts'
 import { applyCapabilityGate, evaluateCapabilityGate } from '../src/host/capability-gate.ts'
 import { APPROVAL_GATE_ID, applyApprovalGate, collectApprovalGate } from '../src/host/approval.ts'
@@ -149,6 +150,41 @@ test('disabledSkillNames returns only disabled skill names', () => {
   ])
 })
 
+// --- disabled MCP instruction sections ---------------------------------------
+//
+// dsh-mcp-client registers every connected server's instructions as a
+// systemPrompt.section named exactly `mcp:<serverName>` (verified against
+// @deepseek-ai/dsh-mcp-client 0.2.0-rc.1, registerServerContext). That name is
+// the SAME string as the plugin's `mcp:<server>` switch id, so a disabled
+// server's instructions block — which otherwise keeps issuing directives like
+// "make kb.recall your first tool call" to a model that can no longer call it —
+// must be shadowable away by the same empty-section mechanism tool guidance
+// uses.
+
+test('disabledMcpInstructionSections maps a disabled mcp group to its mcp:<server> section', () => {
+  assert.deepEqual(
+    disabledMcpInstructionSections(inventory, new Set(['mcp:github'])),
+    ['mcp:github'],
+  )
+})
+
+test('disabledMcpInstructionSections keeps inventory order and skips non-mcp and enabled rows', () => {
+  const twoServers: readonly CapabilityDescriptor[] = [
+    { id: 'mcp:apifox', name: 'apifox', description: '', kind: 'mcp', memberTools: [{ name: 'mcp__apifox__x', description: '' }] },
+    { id: 'mcp:codewiki', name: 'codewiki', description: '', kind: 'mcp', memberTools: [{ name: 'mcp__codewiki__kb_recall', description: '' }] },
+  ]
+  assert.deepEqual(
+    disabledMcpInstructionSections(twoServers, new Set(['mcp:codewiki', 'mcp:apifox'])),
+    ['mcp:apifox', 'mcp:codewiki'],
+  )
+  // enabled mcp rows, plain tools, and skills contribute no section
+  assert.deepEqual(
+    disabledMcpInstructionSections([...twoServers, ...inventory], new Set(['tool:bash', 'skill:research'])),
+    [],
+  )
+  assert.deepEqual(disabledMcpInstructionSections(inventory, new Set()), [])
+})
+
 // --- prompt-gate application dispatch ---------------------------------------
 
 /**
@@ -156,17 +192,23 @@ test('disabledSkillNames returns only disabled skill names', () => {
  * so the dispatch logic (which id -> section vs context vs suppressor) can be
  * asserted without a live harness. Each method returns a distinct disposer.
  */
-function fakeScopedCtx(): {
+function fakeScopedCtx(collide?: { section?: string; context?: string }): {
   ctx: Parameters<typeof applyPromptGates>[0]
   calls: Array<{ fn: string; name?: string; order?: number; text?: string }>
 } {
   const calls: Array<{ fn: string; name?: string; order?: number; text?: string }> = []
   const system = {
     section(s: { name: string; order: number; text: string }): () => void {
+      if (s.name === collide?.section) {
+        throw new Error(`prompt section "${s.name}" is already registered in this scope`)
+      }
       calls.push({ fn: 'section', name: s.name, order: s.order, text: s.text })
       return () => {}
     },
     context(c: { name: string; order: number; text: string }): () => void {
+      if (c.name === collide?.context) {
+        throw new Error(`prompt context "${c.name}" is already registered in this scope`)
+      }
       calls.push({ fn: 'context', name: c.name, order: c.order, text: c.text })
       return () => {}
     },
@@ -220,6 +262,76 @@ test('applyPromptGates applies every disabled gate together', () => {
   )
   assert.equal(disposers.length, 3)
   assert.deepEqual(calls.map(c => c.fn).sort(), ['context', 'section', 'suppress'])
+})
+
+// --- shadow-registration collision tolerance (same-layer duplicates) -------
+
+test('attemptShadow returns the registration disposer on success', () => {
+  const reports: Array<[string, string]> = []
+  let disposed = false
+  const dispose = attemptShadow(() => () => { disposed = true }, (key, message) => reports.push([key, message]), 'prompt section "x"')
+  assert.equal(typeof dispose, 'function')
+  dispose?.()
+  assert.ok(disposed)
+  assert.deepEqual(reports, [])
+})
+
+test('attemptShadow reports a failed registration instead of throwing', () => {
+  const reports: Array<[string, string]> = []
+  const dispose = attemptShadow(
+    () => { throw new Error('prompt section "x" is already registered in this scope') },
+    (key, message) => reports.push([key, message]),
+    'prompt section "x"',
+  )
+  assert.equal(dispose, undefined)
+  assert.equal(reports.length, 1)
+  assert.match(reports[0][0], /prompt\.shadow/)
+  assert.match(reports[0][1], /prompt section "x"/)
+  assert.match(reports[0][1], /already registered/)
+})
+
+test('attemptShadow tolerates a missing drift sink', () => {
+  const dispose = attemptShadow(
+    () => { throw new Error('prompt section "x" is already registered in this scope') },
+    undefined,
+    'prompt section "x"',
+  )
+  assert.equal(dispose, undefined)
+})
+
+test('applyPromptGates skips a colliding shadow and still applies every other gate', () => {
+  // dsh-system-prompt throws on a duplicate name within one scope layer. A
+  // per-agent composition (e.g. dsh-tool-subagent's `tool:subagent` guidance)
+  // can already hold the same name in the agent's exact layer, so one colliding
+  // shadow must not abort the loop — the remaining gates and the approval gate
+  // installed after this function must still apply.
+  const reports: Array<[string, string]> = []
+  const { ctx, calls } = fakeScopedCtx({ section: 'deployment:persona' })
+  const disposers = applyPromptGates(
+    ctx,
+    promptInventory,
+    new Set(['prompt:section:deployment:persona', 'prompt:context:sandbox:policy', 'prompt:runtime']),
+    (key, message) => reports.push([key, message]),
+  )
+  assert.equal(disposers.length, 2)
+  assert.deepEqual(calls.map(c => c.fn).sort(), ['context', 'suppress'])
+  assert.equal(reports.length, 1)
+  assert.match(reports[0][1], /deployment:persona/)
+})
+
+test('applyPromptGates skips a colliding context shadow and still applies the rest', () => {
+  const reports: Array<[string, string]> = []
+  const { ctx, calls } = fakeScopedCtx({ context: 'sandbox:policy' })
+  const disposers = applyPromptGates(
+    ctx,
+    promptInventory,
+    new Set(['prompt:section:deployment:persona', 'prompt:context:sandbox:policy', 'prompt:runtime']),
+    (key, message) => reports.push([key, message]),
+  )
+  assert.equal(disposers.length, 2)
+  assert.deepEqual(calls.map(c => c.fn).sort(), ['section', 'suppress'])
+  assert.equal(reports.length, 1)
+  assert.match(reports[0][1], /sandbox:policy/)
 })
 
 // --- applyPromptGates id-parsing edge cases (M3) ----------------------------
@@ -1421,6 +1533,36 @@ test('evaluateCapabilityGate denies a skill invocation through the skill tool ar
   assert.match((decision as { reason: string }).reason, /skill:research/)
 })
 
+test('evaluateCapabilityGate denies a shared resource call targeting a disabled server', () => {
+  // The three dsh-mcp-resources tools reach ANY configured server through
+  // their `server` argument, so an MCP group switched off must also refuse a
+  // resource call that names it — otherwise the server stays reachable after
+  // its switch is off.
+  const decision = evaluateCapabilityGate(
+    () => layered({}, {}, { 'mcp:codewiki': 'off' }),
+    { name: 'read_mcp_resource', arguments: { server: 'codewiki', uri: 'wiki://x' } },
+  )
+  assert.equal(decision.action, 'deny')
+  assert.match((decision as { reason: string }).reason, /mcp:codewiki/)
+})
+
+test('evaluateCapabilityGate passes a shared resource call to a server no stance disables', () => {
+  assert.deepEqual(
+    evaluateCapabilityGate(
+      () => layered({}, {}, { 'mcp:codewiki': 'off' }),
+      { name: 'list_mcp_resources', arguments: { server: 'apifox' } },
+    ),
+    { action: 'pass' },
+  )
+  assert.deepEqual(
+    evaluateCapabilityGate(
+      () => layered(),
+      { name: 'list_mcp_resource_templates', arguments: { server: 'codewiki' } },
+    ),
+    { action: 'pass' },
+  )
+})
+
 test('evaluateCapabilityGate passes enabled, inherited, and unattributable calls', () => {
   assert.deepEqual(
     evaluateCapabilityGate(() => layered(), { name: 'bash', arguments: {} }),
@@ -1557,6 +1699,18 @@ test('applyCallStats credits an MCP member call to its server group', () => {
   applyCallStats(f.ctx, id => seen.push(id))
   f.listener!({ name: 'mcp__github__list_repos', arguments: {} }, { isError: false })
   assert.deepEqual(seen, ['mcp:github'])
+})
+
+test('applyCallStats credits a shared resource call to the targeted server row', () => {
+  const f = fakeStatsCtx()
+  const seen: string[] = []
+  applyCallStats(f.ctx, id => seen.push(id))
+  // A resource call names its target server, so the usage badge must land on
+  // that server's MCP row ("the model wanted codewiki"), not on the shared
+  // tool row every server shares.
+  f.listener!({ name: 'read_mcp_resource', arguments: { server: 'codewiki', uri: 'x' } }, { isError: false })
+  f.listener!({ name: 'list_mcp_resources', arguments: { server: 'apifox' } }, { isError: false })
+  assert.deepEqual(seen, ['mcp:codewiki', 'mcp:apifox'])
 })
 
 test('applyCallStats reports nothing for an unattributable call', () => {
@@ -1712,6 +1866,57 @@ test('the shipped bundle feeds the call tally into the projection', async () => 
   assert.ok(
     built.includes('this.guardHits, this.callHits)'),
     'the projection call must pass both tallies, guard hits then call hits',
+  )
+})
+
+test('the shipped bundle shadows disabled MCP instruction sections in the reconcile sweep', async () => {
+  const { readFileSync } = await import('node:fs')
+  const built = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8')
+  // dsh-mcp-client names each server's instructions section exactly
+  // `mcp:<serverName>`. A build that leaves the mapper out of the reconcile
+  // sweep still enforces the tool deny but keeps feeding the model the
+  // disabled server's instructions (the reported leak), so pin the CALL SITE
+  // in the artifact a git-tag install actually runs.
+  const start = built.indexOf('disabledToolGuidanceSections(descriptors, disabled)')
+  const end = built.indexOf('systemPrompt.section({', start)
+  assert.ok(start !== -1 && end > start, 'the reconcile shadow sweep was not found in the shipped bundle')
+  const sweep = built.slice(start, end)
+  assert.ok(sweep.includes('disabledMcpInstructionSections(descriptors, disabled)'),
+    'the sweep must feed the disabled MCP instruction sections into the same empty-section shadow')
+})
+
+test('the shipped bundle tolerates a colliding shadow in the reconcile sweep', async () => {
+  const { readFileSync } = await import('node:fs')
+  const built = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8')
+  // A same-name section registered through the agent's exact scope layer (a
+  // per-agent composition like dsh-tool-subagent's `tool:subagent` guidance)
+  // makes the shadow registration throw. Without attemptShadow the throw
+  // aborts reconcile and silently skips the prompt gates and the approval
+  // gate installed after the sweep, so pin the tolerance into the artifact.
+  const start = built.indexOf('disabledToolGuidanceSections(descriptors, disabled)')
+  const end = built.indexOf('applyPromptGates(', start)
+  assert.ok(start !== -1 && end > start, 'the reconcile shadow sweep was not found in the shipped bundle')
+  const sweep = built.slice(start, end)
+  assert.ok(sweep.includes('attemptShadow('),
+    'every shadow registration must go through attemptShadow so a collision reports and skips instead of aborting reconcile')
+  assert.ok(sweep.includes('this.onDrift'),
+    'the sweep must report skipped shadows through the binding drift sink')
+})
+
+test('dsh-mcp-client names each server instructions section exactly mcp:<server>', async () => {
+  const { readFileSync } = await import('node:fs')
+  // The whole fix rests on this external contract: the shadow sweep registers
+  // empty sections named after the switch id, so a framework rename would
+  // silently reopen the leak with every unit test green. Pin the registration
+  // against the installed @deepseek-ai/dsh-mcp-client artifact; a missing file
+  // or renamed registration must fail loudly, never pass vacuously.
+  const dist = readFileSync(
+    new URL('../node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js', import.meta.url),
+    'utf8',
+  )
+  assert.ok(
+    dist.includes('name: `mcp:${server}`'),
+    'dsh-mcp-client must keep registering the instructions section as `mcp:<server>`; re-verify the shadow naming if this changed',
   )
 })
 
@@ -2284,6 +2489,22 @@ test('attributeCall maps an mcp__server__member name to the mcp: group id', () =
   // credit the SERVER row, not a tool: row that no switch exists for.
   assert.equal(attributeCall('mcp__github__list_repos', {}), 'mcp:github')
   assert.equal(attributeCall('mcp__my-server_1__do', {}), 'mcp:my-server_1')
+})
+
+test('attributeCall maps a shared resource call to the targeted server row', () => {
+  // The three dsh-mcp-resources tools take the target server as their `server`
+  // argument (verified against the tool schemas dsh-mcp-resources registers),
+  // so the call attributes to that server's group, not to the shared tool.
+  assert.equal(attributeCall('read_mcp_resource', { server: 'codewiki', uri: 'wiki://x' }), 'mcp:codewiki')
+  assert.equal(attributeCall('list_mcp_resources', { server: 'apifox' }), 'mcp:apifox')
+  assert.equal(attributeCall('list_mcp_resource_templates', { server: 'observability-mcp' }), 'mcp:observability-mcp')
+})
+
+test('attributeCall falls back to the shared tool row when no usable server is named', () => {
+  assert.equal(attributeCall('read_mcp_resource', {}), 'tool:read_mcp_resource')
+  assert.equal(attributeCall('read_mcp_resource', undefined), 'tool:read_mcp_resource')
+  assert.equal(attributeCall('list_mcp_resources', { server: '' }), 'tool:list_mcp_resources')
+  assert.equal(attributeCall('read_mcp_resource', { server: 42 }), 'tool:read_mcp_resource')
 })
 
 test('attributeCall maps a skill loader call to the named skill row', () => {

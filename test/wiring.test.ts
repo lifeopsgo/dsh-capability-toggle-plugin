@@ -89,6 +89,48 @@ test('the binding installs a dynamic capability gate before async inventory refr
   )
 })
 
+test('the reconcile shadow sweep covers MCP instruction sections, not only tool guidance', () => {
+  const binding = src('host/agent-binding.ts')
+  // dsh-mcp-client registers each connected server's instructions as a
+  // systemPrompt.section named exactly `mcp:<serverName>` — the same string as
+  // the plugin's switch id. A sweep that feeds only
+  // disabledToolGuidanceSections leaves a switched-off server's instructions
+  // block in the model's prompt (it keeps commanding the model to call tools
+  // that are already denied), which is the leak this pins shut.
+  const sweep = binding.slice(
+    binding.indexOf('if (this.scopeKey !== undefined) {'),
+    binding.indexOf('applyPromptGates(this.scopedCtx'),
+  )
+  assert.ok(sweep.includes('disabledToolGuidanceSections(descriptors, disabled)'),
+    'the sweep must keep the tool guidance shadows')
+  assert.ok(sweep.includes('disabledMcpInstructionSections(descriptors, disabled)'),
+    'the sweep must feed the disabled MCP instruction sections into the same empty-section shadow')
+  assert.match(binding, /disabledMcpInstructionSections,/)
+})
+
+test('the reconcile shadow sweep tolerates a colliding registration instead of aborting', () => {
+  const binding = src('host/agent-binding.ts')
+  // A same-name section already registered through the agent's exact scope
+  // layer (e.g. dsh-tool-subagent's standing `tool:subagent` guidance
+  // composition) makes one shadow registration throw. The throw used to
+  // abort reconcile and silently skip the prompt gates and the approval gate
+  // installed after the sweep — a partial fail-open — so every registration
+  // must go through the collision-tolerant attemptShadow with the binding's
+  // drift sink.
+  const sweep = binding.slice(
+    binding.indexOf('if (this.scopeKey !== undefined) {'),
+    binding.indexOf('applyPromptGates(this.scopedCtx'),
+  )
+  assert.ok(sweep.includes('attemptShadow('),
+    'every shadow registration must go through attemptShadow so a collision reports and skips')
+  assert.ok(sweep.includes('this.onDrift'),
+    'skipped shadows must be reported through the binding drift sink')
+  assert.ok(
+    binding.indexOf('attemptShadow(') < binding.indexOf('applyPromptGates(this.scopedCtx'),
+    'the tolerance must sit inside the sweep, before the gates installed after it',
+  )
+})
+
 test('the binding installs the guard listener with the confirmer', () => {
   const binding = src('host/agent-binding.ts')
   assert.match(binding, /applyGuards\(this\.scopedCtx/, 'the guard listener must be installed')

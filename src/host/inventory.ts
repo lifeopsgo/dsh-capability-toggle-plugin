@@ -8,7 +8,8 @@
  *     summary (name + routing description).
  *   - `mcp`:   tools named `mcp__<server>__<rawName>` (the mcp-client public
  *     name grammar), grouped by `<server>` into one switch per server; a group
- *     switch denies every member tool.
+ *     switch denies every member tool, shadows the server's `mcp:<server>`
+ *     instructions section, and refuses shared resource calls naming it.
  *   - `tool`:  every other model-facing tool from `ctx.tools.schemas(scope)`.
  *
  * The switch id namespaces are disjoint: `skill:<name>`, `mcp:<server>`,
@@ -32,6 +33,14 @@ import { collectGuards } from './guards.ts'
 /** Prefix marking an MCP public tool name; capture group 1 is the server. */
 const MCP_NAME = /^mcp__([A-Za-z0-9_-]{1,32})__/
 
+/**
+ * The shared resource tools `dsh-mcp-resources` registers for every configured
+ * server. Each takes the target server as its `server` argument, so a call
+ * through one of them reaches that server — it must attribute to the server's
+ * `mcp:<server>` switch, not to the shared tool row.
+ */
+const MCP_RESOURCE_TOOLS = new Set(['list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'])
+
 const SKILL_TOOL_NAME = 'skill'
 
 /** Build the `skill:<name>` switch id. */
@@ -53,6 +62,10 @@ export function attributeCall(name: string, args: unknown): string | undefined {
   if (name === SKILL_TOOL_NAME) {
     const skillName = (args as { name?: unknown } | null | undefined)?.name
     return typeof skillName === 'string' && skillName !== '' ? skillId(skillName) : undefined
+  }
+  if (MCP_RESOURCE_TOOLS.has(name)) {
+    const server = (args as { server?: unknown } | null | undefined)?.server
+    return typeof server === 'string' && server !== '' ? mcpId(server) : toolId(name)
   }
   const mcp = MCP_NAME.exec(name)
   return mcp !== null ? mcpId(mcp[1] as string) : toolId(name)
@@ -243,8 +256,9 @@ export function disabledSkillNames(
  *
  * Only plain tools qualify:
  *   - `skill` rows use the skill-shadow seam and have no such section.
- *   - `mcp` group rows deny member tools whose guidance sections (if any) are
- *     not named after the group, so there is nothing deterministic to shadow.
+ *   - `mcp` group rows shadow their instructions section through
+ *     {@link disabledMcpInstructionSections} instead — their member tools'
+ *     guidance sections (if any) are named after the members, not the group.
  *
  * Shadowing a section is best-effort cosmetics (it saves prompt tokens and
  * removes stale guidance for an already-denied tool); a tool that ships no
@@ -260,6 +274,35 @@ export function disabledToolGuidanceSections(
   const names: string[] = []
   for (const d of descriptors) {
     if (d.kind === 'tool' && disabledIds.has(d.id)) names.push(`tool:${d.name}`)
+  }
+  return names
+}
+
+/**
+ * Map every disabled MCP server group to the name of its instructions prompt
+ * section. `dsh-mcp-client` registers each connected server's instruction
+ * snapshot (the `### MCP server: <name>` block the server itself supplies) as
+ * one `systemPrompt.section` named exactly `mcp:<serverName>` — the same
+ * string as our `mcp:<server>` switch id — so the id doubles as the section
+ * name, exactly like the plain-tool guidance case above.
+ *
+ * Without this shadow a switched-off server's instructions stay in the model's
+ * prompt and keep issuing directives (e.g. "make kb.recall your first tool
+ * call") for tools the deny already removed, which is prompt injection the
+ * user cannot switch off any other way.
+ *
+ * @param descriptors - the inventory.
+ * @param disabledIds - the switch ids resolved to disabled.
+ * @returns the `mcp:<server>` instructions section names to shadow with empty
+ *   text.
+ */
+export function disabledMcpInstructionSections(
+  descriptors: readonly CapabilityDescriptor[],
+  disabledIds: ReadonlySet<string>,
+): string[] {
+  const names: string[] = []
+  for (const d of descriptors) {
+    if (d.kind === 'mcp' && disabledIds.has(d.id)) names.push(d.id)
   }
   return names
 }

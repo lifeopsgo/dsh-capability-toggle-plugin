@@ -4,6 +4,79 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [2.0.1] - 2026-10-13
+
+### Fixed
+
+- **A switched-off MCP server no longer keeps commanding the model through its
+  instructions block.** `dsh-mcp-client` registers every connected server's
+  instruction snapshot as a system-prompt section named exactly `mcp:<server>`
+  — the same string as this plugin's switch id — but the MCP enforcement only
+  denied the member tools, so a server switched off at any level kept its
+  `### MCP server: <name>` block in the prompt. The block is server-supplied
+  text that often carries hard directives ("make kb.recall your first tool
+  call"), so the model kept reading orders for tools it could no longer call —
+  visible in agent reasoning traces after the switch was already off. The
+  reconcile sweep now feeds `disabledMcpInstructionSections` into the same
+  empty-section shadow the tool guidance uses, so the block disappears from
+  the model's next step at every level (session / project / global), while the
+  connection itself stays untouched for other agents.
+
+- **A switched-off MCP server is no longer reachable through the shared
+  resource tools.** `list_mcp_resources`, `list_mcp_resource_templates`, and
+  `read_mcp_resource` reach any configured server through their `server`
+  argument, and a call naming a switched-off server previously executed
+  against it. Call attribution now maps such a call to the targeted server's
+  `mcp:<server>` switch, so the capability gate refuses it at execution time;
+  the usage tally also credits the server's row instead of the shared tool
+  row, keeping the "called N times" badge truthful.
+
+- Corrected the inventory doc comment that claimed an MCP group has "nothing
+  deterministic to shadow" — the instructions section name is deterministic
+  (it is the switch id), which is exactly what the new shadow relies on.
+
+- **A colliding shadow no longer aborts reconcile and silently drops the
+  prompt gates and the approval lock.** Registering a same-name
+  `systemPrompt` section in the agent's exact scope layer throws — reachable
+  today through a per-agent composition such as `dsh-tool-subagent`'s
+  standing `tool:subagent` guidance when that tool is switched off. The throw
+  used to abort the reconcile sweep, skipping the prompt-gate family and the
+  approval escalation lock installed after it (a partial fail-open) and
+  erroring the panel write after its stance had already committed. Every
+  cosmetic shadow registration (tool guidance, MCP instructions, prompt
+  gates) now goes through the collision-tolerant `attemptShadow`, which
+  reports the skipped shadow once through the drift sink and continues. The
+  external contract the MCP shadow rests on (`dsh-mcp-client` registering
+  the section as exactly `` `mcp:${server}` ``) is now pinned by a contract
+  test against the installed package, so a framework rename fails loudly
+  instead of silently reopening the leak.
+
+### Known limitations
+
+- The framework-owned `MCP resource servers` names list
+  (`mcp-resource-servers`, registered by `dsh-mcp-resources` from its private
+  scoped registry) still names every configured server, including switched-off
+  ones. Filtering it from a plugin would require reading private service
+  internals and duplicating the framework's format string, so it is left to a
+  framework-level visibility seam; calls it advertises are already refused by
+  the gate above. Servers that expose no tools also have no switch row and
+  cannot be toggled.
+
+- MCP member tools are grouped by the captured server segment of their public
+  name (`mcp__<server>__<tool>`). A raw tool name containing `__` cannot be
+  told apart from the server segment (a server literally named `a__b` is
+  legal), so `mcp__a__b__c` groups under a phantom `mcp:a__b` row: toggling
+  it denies that member tool correctly but shadows no real instructions
+  block, and a server whose tools all contain `__` produces no `mcp:<server>`
+  row at all — its instructions stay unshadowable and its resource calls
+  cannot be gated through a row stance. A deterministic fix needs a framework
+  seam exposing configured server names.
+
+- A shared resource call naming a resources-only (tool-less) server is
+  credited to its `mcp:<server>` id, which no switch row renders, so that
+  tally is not visible in the panel (it was previously credited to the shared
+  tool row). Servers with tools are unaffected.
+
 ## [2.0.0] - 2026-09-29
 
 ### Added
