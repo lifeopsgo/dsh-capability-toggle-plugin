@@ -5,7 +5,7 @@
 **Control agent capabilities from the DSH WebUI — with real runtime enforcement.**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#quick-start)
-![tests](https://img.shields.io/badge/tests-380%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-381%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -23,23 +23,25 @@ A **DeepSeek Harness (DSH) WebUI** plugin for controlling **skills, MCP servers,
 
 ## Compatible DSH versions
 
-This release targets **DSH 0.2.0-rc.1**. Every DSH peer dependency is pinned to that
-release candidate. The Host uses the `agent/created` lifecycle, persistent
-`configEditor` edits, and Loader volatile-config updates; each committed change
-reconciles every live agent binding.
+This release targets **DSH 0.2.0-rc.1 and 0.2.1-rc.2** (peer range
+`0.2.0-rc.1 || 0.2.1-rc.2`; both verified in a real environment). The Host uses
+the `agent/created` lifecycle, persistent `configEditor` edits, and Loader
+volatile-config updates; each committed change reconciles every live agent
+binding.
 
 | DSH version | Status | How it was checked |
 | --- | --- | --- |
-| 0.2.0-rc.1 | supported | Host and Client typechecks, 380 automated tests, production build, framework-link validation, composed-profile inspection, and browser verification |
+| 0.2.0-rc.1 | supported | Host and Client typechecks, production build, framework-link validation, composed-profile inspection, browser verification, and the full automated suite run green under 0.2.0-rc.1 dependencies at v2.0.1 (380 tests) |
+| 0.2.1-rc.2 | supported | The same gates against the live 0.2.1-rc.2 runtime, plus end-to-end browser verification of the capability panel and its live preference toggling |
 
 This release makes no compatibility claim for other DSH versions.
 
 ## Quick start
 
-Requires **Node.js ^22.19.0 or ≥ 24.0.0** (same as DSH 0.2.0-rc.1).
+Requires **Node.js ^22.19.0 or ≥ 24.0.0** (same as DSH 0.2.x).
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.1.0
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -55,7 +57,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.1.0
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -147,6 +149,7 @@ Planned, not yet implemented:
 - **Show only enabled / only disabled** — add a state filter next to the search box, which today matches names and descriptions only. Guards need the same care the fraction counts need: a guard reuses `disabled` to mean ACTIVE, so "only disabled" must not list a guard that is actually enforcing. The filter would also narrow what bulk actions apply to, since they act on every currently visible row.
 - ~~**Filter and select-all**~~ — shipped in v1.1.0: the toolbar's search box filters rows, and each level's bulk menu applies enable/disable/clear to every currently visible row.
 - ~~**Bulk actions on a filtered selection**~~ — shipped in v1.1.0 together with the filter (search narrows, bulk acts on what's shown).
+- ~~**WebUI sidebar chrome toggles**~~ — shipped in the companion plugin **dsh-ui-toggle-plugin** (its own Settings section, "UI toggle"): hide the sidebar brand area, keep only the Settings button at the sidebar foot, lay the global panel icons out horizontally, hide the New Session and collapse-sidebar buttons, and hide the composer placeholder — all applied live and migrated from this plugin's stored values on first start.
 
 ---
 

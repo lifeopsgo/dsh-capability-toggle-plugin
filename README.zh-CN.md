@@ -5,7 +5,7 @@
 **在 DSH WebUI 中控制 agent 能力，并在运行时真正强制执行。**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#快速开始)
-![tests](https://img.shields.io/badge/tests-380%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-381%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -25,20 +25,21 @@
 
 ## 兼容的 DSH 版本
 
-本版本面向 **DSH 0.2.0-rc.1**，全部 DSH peer 依赖均精确锁定到该 RC。Host 已迁移到 `agent/created` 生命周期、持久化 `configEditor` 写入和 Loader volatile 配置更新；每次写入都会重新协调全部仍存活的 agent binding。
+本版本面向 **DSH 0.2.0-rc.1 与 0.2.1-rc.2**（peer 范围为 `0.2.0-rc.1 || 0.2.1-rc.2`，两个版本均在真实环境中验证）。Host 已迁移到 `agent/created` 生命周期、持久化 `configEditor` 写入和 Loader volatile 配置更新；每次写入都会重新协调全部仍存活的 agent binding。
 
 | DSH 版本 | 状态 | 验证方式 |
 | --- | --- | --- |
-| 0.2.0-rc.1 | 支持 | Host 与 Client 类型检查、380 项自动化测试、生产构建、框架链接校验、组合 profile 检查和浏览器验证 |
+| 0.2.0-rc.1 | 支持 | Host 与 Client 类型检查、生产构建、框架链接校验、组合 profile 检查、浏览器验证，以及在 v2.0.1 时于 0.2.0-rc.1 依赖下全量跑绿的自动化测试（380 项） |
+| 0.2.1-rc.2 | 支持 | 面向 0.2.1-rc.2 真实运行环境的同套门禁，另含能力面板与其偏好开关实时切换的端到端浏览器验证 |
 
-本版本不声明兼容其他 DSH 版本。
+其他 DSH 版本不声明支持。
 
 ## 快速开始
 
-需要 **Node.js ^22.19.0 或 ≥ 24.0.0**（与 DSH 0.2.0-rc.1 相同）。
+需要 **Node.js ^22.19.0 或 ≥ 24.0.0**（与 DSH 0.2.x 相同）。
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.1.0
 dsh --profile web web
 ```
 
@@ -49,7 +50,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.0.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.1.0
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -141,6 +142,7 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 - **只显示已启用 / 只显示已禁用** — 在搜索框旁增加状态过滤（搜索当前只匹配名称与描述）。安全守卫需要与分数计数同样的处理：guard 复用 `disabled` 表示「已激活」，因此「只显示已禁用」不能把实际生效中的守卫列进去。该过滤还会缩小批量操作的作用范围，因为批量作用于当前可见的所有行。
 - ~~**筛选与全选**~~ — 已于 v1.1.0 实现：工具栏搜索框可筛选行，各层级的批量菜单可对当前可见的所有行执行启用/停用/清除。
 - ~~**筛选全选后批量操作**~~ — 已于 v1.1.0 与筛选功能一同交付（搜索缩小范围，批量作用于当前可见行）。
+- ~~**侧栏界面开关**~~ — 已由伴生插件 **dsh-ui-toggle-plugin** 交付（设置内独立的「UI 开关」分区）：隐藏侧栏品牌区、左下角仅保留设置按钮、全局面板图标横排、隐藏「新会话」与「收起侧边栏」按钮、隐藏输入框占位文案，全部即改即生效，且首次启动时自动迁移本插件已存的开关值。
 
 ---
 

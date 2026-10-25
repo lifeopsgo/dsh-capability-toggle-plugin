@@ -96,17 +96,53 @@ test('concurrent config-editor writes merge against the latest locked document',
   assert.deepEqual(current().global, { 'tool:bash': 'off', 'tool:pwsh': 'off' })
 })
 
-test('all framework peers target the DSH 0.2 release candidate', () => {
+test('all framework peers target the verified DSH 0.2 release candidates', () => {
   const pkg = JSON.parse(root('package.json')) as {
     peerDependencies: Record<string, string>
     devDependencies: Record<string, string>
   }
+  // Both RCs the plugin is verified against (0.2.0-rc.1 per the README table,
+  // 0.2.1-rc.2 verified against the live tree), one shared range so no peer
+  // resolves a second framework copy.
+  const RANGE = '0.2.0-rc.1 || 0.2.1-rc.2'
   for (const [name, range] of Object.entries(pkg.peerDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '0.2.0-rc.1', `${name} peer range`)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, RANGE, `${name} peer range`)
   }
   for (const [name, version] of Object.entries(pkg.devDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, '0.2.0-rc.1', `${name} dev version`)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, '0.2.1-rc.2', `${name} dev version`)
   }
   assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '~4.0.4')
-  assert.equal(pkg.devDependencies['@deepseek-ai/cordis'], '4.0.4')
+  // The dev pin mirrors the real 0.2.1-rc.2 runtime (its framework packages
+  // peer-require cordis ~4.0.5), so `pnpm peers check` stays clean here; the
+  // PEER range above stays ~4.0.4 because it must also admit an 0.2.0-rc.1
+  // runtime (which peer-requires only ~4.0.4).
+  assert.equal(pkg.devDependencies['@deepseek-ai/cordis'], '4.0.5')
+})
+
+test('the lockfile agrees with package.json so CI frozen installs cannot drift', () => {
+  const pkg = JSON.parse(root('package.json')) as {
+    dependencies: Record<string, string>
+    devDependencies: Record<string, string>
+  }
+  // CI installs with `pnpm install --frozen-lockfile`: pnpm hard-fails there
+  // when the importers section disagrees with package.json. Catching the
+  // drift in the local suite names the culprit before CI does — the failure
+  // mode is "edit deps, forget to re-run pnpm install".
+  const lock = root('pnpm-lock.yaml')
+  const importers = lock.slice(lock.indexOf('importers:'), lock.indexOf('packages:'))
+  const lines = importers.split('\n')
+  const specifierFor = (name: string): string | undefined => {
+    for (let i = 0; i < lines.length - 1; i++) {
+      const key = lines[i].trim()
+      if (key === `'${name}':` || key === `${name}:`) {
+        const m = /^ {8}specifier: (.+)$/.exec(lines[i + 1])
+        if (m) return m[1].trim()
+      }
+    }
+    return undefined
+  }
+  for (const [name, specifier] of Object.entries({ ...pkg.dependencies, ...pkg.devDependencies })) {
+    assert.equal(specifierFor(name), specifier,
+      `pnpm-lock.yaml importer for ${name} must pin specifier ${specifier} (re-run pnpm install)`)
+  }
 })

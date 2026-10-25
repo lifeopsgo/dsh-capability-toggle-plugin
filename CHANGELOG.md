@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-10-25
+
+### Changed
+
+- **Every framework peer dependency now accepts both verified DSH 0.2 release
+  candidates** (`0.2.0-rc.1 || 0.2.1-rc.2`, one shared range so no peer resolves
+  a second framework copy). The plugin previously installed only against
+  0.2.0-rc.1; both runtimes are now verified in a real environment.
+
+### Development
+
+- **devDependencies move to 0.2.1-rc.2 and pin cordis at 4.0.5**, mirroring the
+  real 0.2.1-rc.2 runtime (its framework packages peer-require cordis ~4.0.5),
+  so `dsh plugin --profile <p> peers check` stays clean; the peer range above
+  stays ~4.0.4 because it must also admit an 0.2.0-rc.1 runtime. The contract
+  test pins both the widened ranges and the dev pin.
+
+- **The contract suite now fails on lockfile drift** against package.json, the
+  failure mode `pnpm install --frozen-lockfile` would otherwise only surface
+  in CI.
+
+### Note
+
+- The sidebar chrome switches developed in this working tree (hide the brand
+  area, settings-only launcher, horizontal panel icons, hide the New Session
+  and collapse-sidebar buttons, hide the composer placeholder) moved to the
+  companion plugin **dsh-ui-toggle-plugin**, which ships them as a Settings
+  section and migrates the stored switch values on first start. This plugin's
+  panel keeps its own three display preferences.
+
 ## [2.0.1] - 2026-10-13
 
 ### Fixed
