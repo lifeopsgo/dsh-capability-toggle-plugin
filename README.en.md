@@ -9,7 +9,7 @@
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
-**English** · [简体中文](./README.md)（精简）· [详细中文](./README.zh-CN.md)
+[![中文](https://img.shields.io/badge/README-中文-red?style=flat-square)](./README.md) [![English](https://img.shields.io/badge/README-English-blue?style=flat-square)](./README.en.md) [![详细中文](https://img.shields.io/badge/README-详细中文-orange?style=flat-square)](./README.zh-CN.md)
 
 <img alt="Capability controls for Skills, MCP, Tools, Prompt, and Security" src="./docs/screenshot.jpeg" width="900">
 

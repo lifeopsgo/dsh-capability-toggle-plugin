@@ -1,5 +1,7 @@
 # dsh-capability-toggle-plugin
 
+[![中文](https://img.shields.io/badge/README-中文-red?style=flat-square)](./README.md) [![English](https://img.shields.io/badge/README-English-blue?style=flat-square)](./README.en.md) [![详细中文](https://img.shields.io/badge/README-详细中文-orange?style=flat-square)](./README.zh-CN.md)
+
 一个 DSH（DeepSeek Harness）插件：在会话输入框上方开一个面板，把 agent 能用的能力逐个打开或关掉。关掉的能力 agent 就看不见了——工具列表里没有、skill 目录里没有，强行调用会被直接拦截。
 
 ## 能关什么
