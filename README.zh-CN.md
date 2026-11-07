@@ -9,7 +9,7 @@
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
-[English](./README.md) · **简体中文**
+[English](./README.en.md) · **简体中文**
 
 <img alt="技能、MCP、工具、提示词与安全能力开关" src="./docs/screenshot.jpeg" width="900">
 
