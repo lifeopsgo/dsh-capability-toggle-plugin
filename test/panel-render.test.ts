@@ -25,7 +25,7 @@ function panelProps(running: boolean, rows = [skillRow('alpha', 'alpha'), skillR
     disabled: running,
     t: (key: string, params?: Record<string, unknown>) =>
       (params ? `${key}:${JSON.stringify(params)}` : key),
-    prefs: { showFraction: true, showUsage: true, levels: 'all' },
+    prefs: { showFraction: true, showUsage: true, levels: 'all', disableSessionRefs: false },
     onPrefsChange() {},
     onSet() {},
     onSetMany() {},

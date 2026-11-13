@@ -407,7 +407,7 @@ export function Panel(props: {
   const visibleLevels = levelsVisible(prefs.levels)
 
   return (
-    <div className="dshct-panel" role="dialog" aria-label={t('panel.title')} style={{ '--dshct-lv-n': visibleLevels.length } as CSSProperties}>
+    <div className="dshct-panel" role="dialog" aria-label={t('panel.title')} data-composer-overlay="" style={{ '--dshct-lv-n': visibleLevels.length } as CSSProperties}>
       <div className="dshct-header">
         <span className="dshct-title">{t('panel.title')}</span>
         <span className="dshct-header-actions">
@@ -475,6 +475,20 @@ export function Panel(props: {
                   <option key={scope} value={scope}>{t(`prefs.levels.${scope}`)}</option>
                 ))}
               </select>
+            </div>
+            <div className="dshct-pref-row">
+              <span className="dshct-pref-text">
+                <span className="dshct-pref-label" id="dshct-pref-session-refs">{t('prefs.sessionRefs')}</span>
+                <span className="dshct-pref-hint">{t('prefs.sessionRefs.hint')}</span>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                className="dshct-switch"
+                aria-checked={prefs.disableSessionRefs}
+                aria-labelledby="dshct-pref-session-refs"
+                onClick={() => props.onPrefsChange({ ...prefs, disableSessionRefs: !prefs.disableSessionRefs })}
+              />
             </div>
           </div>
         )
@@ -603,6 +617,7 @@ export function ConfirmationCard(props: {
       aria-modal="false"
       aria-label={props.t('guard.confirm.title')}
       data-action={props.guardAction}
+      data-composer-overlay=""
     >
       <div className="dshct-confirm-head">
         <span className="dshct-confirm-badge" data-action={props.guardAction}>

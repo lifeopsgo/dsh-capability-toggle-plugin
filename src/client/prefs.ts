@@ -5,6 +5,7 @@ export interface PanelPrefs {
   readonly showFraction: boolean
   readonly showUsage: boolean
   readonly levels: LevelScope
+  readonly disableSessionRefs: boolean
 }
 
 export interface PrefsStorage {
@@ -19,6 +20,7 @@ export const DEFAULT_PREFS: PanelPrefs = {
   showFraction: true,
   showUsage: true,
   levels: 'all',
+  disableSessionRefs: false,
 }
 
 function isLevelScope(value: string): value is LevelScope {
@@ -50,7 +52,12 @@ export function readPrefs(storage: PrefsStorage | undefined = defaultStorage()):
   if (typeof candidate.showFraction !== 'boolean') return DEFAULT_PREFS
   if (typeof candidate.showUsage !== 'boolean') return DEFAULT_PREFS
   if (typeof candidate.levels !== 'string' || !isLevelScope(candidate.levels)) return DEFAULT_PREFS
-  return { showFraction: candidate.showFraction, showUsage: candidate.showUsage, levels: candidate.levels }
+  return {
+    showFraction: candidate.showFraction,
+    showUsage: candidate.showUsage,
+    levels: candidate.levels,
+    disableSessionRefs: candidate.disableSessionRefs === true,
+  }
 }
 
 export function writePrefs(prefs: PanelPrefs, storage: PrefsStorage | undefined = defaultStorage()): void {
@@ -59,5 +66,28 @@ export function writePrefs(prefs: PanelPrefs, storage: PrefsStorage | undefined 
     storage.setItem(PREFS_KEY, JSON.stringify(prefs))
   } catch {
     return
+  }
+}
+
+export const PREFS_EVENT = 'dsh-capability-toggle-plugin:prefs'
+
+export function publishPrefs(next: PanelPrefs, storage: PrefsStorage | undefined = defaultStorage()): void {
+  writePrefs(next, storage)
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return
+  window.dispatchEvent(new CustomEvent(PREFS_EVENT, { detail: next }))
+}
+
+export function subscribePrefs(listener: (next: PanelPrefs) => void): () => void {
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return () => {}
+  const onLocal = (event: Event): void => {
+    const detail = (event as CustomEvent<PanelPrefs>).detail
+    if (detail !== undefined) listener(detail)
+  }
+  const onStorage = (): void => listener(readPrefs())
+  window.addEventListener(PREFS_EVENT, onLocal)
+  window.addEventListener('storage', onStorage)
+  return () => {
+    window.removeEventListener(PREFS_EVENT, onLocal)
+    window.removeEventListener('storage', onStorage)
   }
 }

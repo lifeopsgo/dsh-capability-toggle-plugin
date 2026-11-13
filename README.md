@@ -29,7 +29,7 @@
 ## 安装
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.1.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.2.0
 dsh --profile web web
 ```
 

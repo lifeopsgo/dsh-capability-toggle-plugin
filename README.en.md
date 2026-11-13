@@ -41,7 +41,7 @@ This release makes no compatibility claim for other DSH versions.
 Requires **Node.js ^22.19.0 or ≥ 24.0.0** (same as DSH 0.2.x).
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.1.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.2.0
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -57,7 +57,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.1.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.2.0
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -124,17 +124,20 @@ The tally counts **requests**, not successful runs: a call a guard blocked or se
 
 ### Panel preferences
 
-A disclosure arrow beside the panel title opens three display preferences, stored in `localStorage` so they survive page reloads and restarts:
+A disclosure arrow beside the panel title opens four settings, stored in `localStorage` so they survive page reloads and restarts:
 
 | Preference | Effect |
 | :-- | :-- |
 | **Show “enabled / total” on tabs** | Renders each tab badge as a fraction (`67/106`) instead of a bare total, so the strip reports how much of each family is active at a glance. The tooltip states both numbers in words either way. |
 | **Show call stats** | Hides or shows the per-row usage badge described above. |
 | **Level columns to show** | Narrows the grid to Session, Session + Project, or all three columns. |
+| **Disable @ session references** | Typing `@` lists files only, with no historic or subagent sessions. It filters the candidate menu only: mentions already written into the draft still resolve, the setting is per browser (`localStorage`), and the host still issues its session lookup. |
 
 The fraction counts a guard as enabled only while it is **active**. A guard row reuses the same `disabled` field to mean ACTIVE — the inverse of every default-on family — so a Security tab with the approval gate open and all five guards inactive reads `1/6`, not `6/6`.
 
 Narrowing the level columns is **display-only**: the three-level resolution keeps running exactly as before, so a hidden project or global override still applies. Each row's badge and level switches always reflect the resolved state — a default-on family reads `Active`/`Disabled`, a guard reads `Guarding`/`Inactive` — which is why hiding a column cannot hide an effect. The name column absorbs the freed width, and the layout is driven by CSS variables so it stays aligned with the narrow-screen adaptation.
+
+Text in the popup and in the blocking-guard card can be selected with the mouse and copied with Ctrl+C; dragging across a button label selects it without also triggering the button.
 
 Additional behavior: while the agent runs, the controls that write a stance lock — each row's level switches, their clear badges, and the bulk menus — but browsing stays open, so the search box, the level-column selector, the tabs, and a row's expand still work. State survives popup close and turn boundaries, and the UI follows the WebUI language.
 

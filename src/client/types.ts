@@ -27,6 +27,7 @@ export type Translate = (key: string, params?: Record<string, string | number>) 
  */
 export interface ClientContext {
   effect(factory: () => (() => void) | void, label?: string): () => void
+  get?(name: string): unknown
   readonly slots: {
     inject(key: string, callback: () => (() => void) | void): () => void
     register(spec: SlotSpec, component: SlotComponent): () => void

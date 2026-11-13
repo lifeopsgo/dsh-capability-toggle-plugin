@@ -4,6 +4,41 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [2.2.0] - 2026-11-13
+
+### Added
+
+- **Popup and guard-card text can be selected and copied.** The region the
+  plugin renders inside the composer now carries `data-composer-overlay`, the
+  escape hatch the host's composer `mousedown` handler checks before it calls
+  `preventDefault()` to keep the draft focused; `user-select: text` extends the
+  same treatment to button labels, which Chromium otherwise refuses to start a
+  selection inside. A document-level guard drops the click that follows a drag,
+  so selecting an MCP description no longer toggles its member list, and a
+  keyboard activation is never mistaken for a drag.
+
+- **A drawer switch hides sessions from the `@` menu.** The host's reference
+  plugin merges file paths and historic sessions into one candidate source; the
+  new switch wraps that source on `ctx.inputTriggers` and drops rows whose icon
+  or value kind is `session`, which removes the 对话 and 子智能体 groups. Turning
+  the switch off, or unmounting the control, restores the original function, and
+  a function the host replaced in the meantime is never overwritten. The
+  preference is shared between composers and tabs through a `storage` listener
+  and a local event, and a stored blob written before the field existed keeps
+  its other values. The switch filters the candidate menu only: mentions already
+  in the draft still resolve, and the host still issues its session lookup.
+
+### Changed
+
+- The drawer is titled 面板设置 / Panel settings instead of 显示设置 / Display
+  settings, because it now holds a behaviour switch as well as display prefs.
+
+### Development
+
+- Contract tests pin the two host seams these features rest on: the composer
+  `mousedown` escape hatch in `dsh-client-ui-conversation` and the trigger
+  roster plus service name in `dsh-client-ui-input-trigger`.
+
 ## [2.1.0] - 2026-10-25
 
 ### Changed

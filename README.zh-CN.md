@@ -39,7 +39,7 @@
 需要 **Node.js ^22.19.0 或 ≥ 24.0.0**（与 DSH 0.2.x 相同）。
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.1.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.2.0
 dsh --profile web web
 ```
 
@@ -50,7 +50,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.1.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.2.0
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -117,17 +117,20 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 
 ### 面板偏好
 
-面板标题旁的折叠箭头展开三个显示偏好，存入 `localStorage`，因此刷新页面与重启浏览器后仍然保留：
+面板标题旁的折叠箭头展开四个设置项，存入 `localStorage`，因此刷新页面与重启浏览器后仍然保留：
 
 | 偏好 | 作用 |
 | :-- | :-- |
 | **标签页显示「启用数 / 总数」** | tab 徽章由纯总数改为分数形式（`67/106`），一眼看出每族能力的启用比例；无论开关与否，悬停提示都以文字给出两个数字。 |
 | **显示调用统计** | 控制上文的每行用量徽章是否显示。 |
 | **显示的层级列** | 将网格收窄为仅会话级、会话级 + 项目级，或三级全显。 |
+| **禁用 @ 会话引用** | 在输入框敲 `@` 时只列出文件，不再列出历史会话与子智能体会话。只影响候选菜单，已写进草稿的 `@` 引用照常解析；设置存在本机 `localStorage`，只对当前浏览器生效，宿主的会话检索请求仍会发出。 |
 
 分数只把**已生效**的守卫计入启用数。guard 行复用同一个 `disabled` 字段表示「已激活」，与其他默认启用族的方向相反——所以审批开关打开、五个守卫都未激活时，安全 tab 显示 `1/6` 而不是 `6/6`。
 
 收窄层级列**只影响显示**：三级优先级解析照常运行，被隐藏的项目级或全局级设定仍然生效。每行的徽章与层级开关始终反映综合解析后的状态——默认启用族显示「生效中/已停用」，守卫显示「守护中/未启用」——因此隐藏一列不会隐藏任何生效影响。名称列会吸收释放出来的宽度；布局由 CSS 变量驱动，因此与窄屏适配保持对齐。
+
+弹层与阻断确认卡片里的文字可以用鼠标选中、按 Ctrl+C 复制；在按钮文字上拖选不会顺带触发那个按钮。
 
 其他行为：agent 运行时，会写入设定的控件锁定——每行的层级开关、其清除徽章、以及批量菜单——但浏览保持可用，因此搜索框、层级列下拉、tab 切换、行展开照常工作；关闭弹窗或跨轮次后状态仍保留；界面语言跟随 WebUI。
 

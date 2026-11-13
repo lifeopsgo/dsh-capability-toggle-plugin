@@ -2762,8 +2762,8 @@ test('readPrefs round-trips what writePrefs stored', async () => {
     removeItem: (k: string) => { map.delete(k) },
   }
   const next = { showFraction: false, showUsage: false, levels: 'session-project' as const }
-  writePrefs(next, store)
-  assert.deepEqual(readPrefs(store), next)
+  writePrefs({ ...next, disableSessionRefs: false }, store)
+  assert.deepEqual(readPrefs(store), { ...next, disableSessionRefs: false })
 })
 
 test('readPrefs falls back to defaults for a value it cannot trust', async () => {
@@ -2872,7 +2872,7 @@ test('Panel consumes prefs/onPrefsChange props so index.tsx owns persistence', a
   assert.ok(!/localStorage/.test(panel), 'components.tsx must not reach localStorage directly')
   // The host reads once (lazy init) and writes on change.
   assert.match(host, /useState<PanelPrefs>\(readPrefs\)/)
-  assert.match(host, /writePrefs\(next\)/)
+  assert.match(host, /publishPrefs\(next\)/)
   assert.match(host, /prefs=\{prefs\}/)
   assert.match(host, /onPrefsChange=\{onPrefsChange\}/)
 })

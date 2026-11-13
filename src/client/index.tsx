@@ -28,8 +28,10 @@ import type {
 } from '../shared/types.ts'
 import { fetchState, respondConfirm, subscribeConfirm, writeState, writeStateMany } from './api.ts'
 import { ConfirmationCard, Panel } from './components.tsx'
+import { installSelectionClickGuard } from './drag-guard.ts'
+import { applySessionRefsPref, bindTriggerService } from './session-refs.ts'
 import { NS, dictionaries } from './locales.ts'
-import { readPrefs, writePrefs } from './prefs.ts'
+import { publishPrefs, readPrefs, subscribePrefs } from './prefs.ts'
 import type { PanelPrefs } from './prefs.ts'
 import { runningOf, sessionIdOf } from './session.ts'
 import { injectStyles } from './styles.ts'
@@ -93,6 +95,13 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
       if (aliveRef.current && seq === readSeqRef.current) setLoading(false)
     }
   }, [sessionId])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    return installSelectionClickGuard(document)
+  }, [])
+
+  useEffect(() => applySessionRefsPref(prefs.disableSessionRefs), [prefs.disableSessionRefs])
 
   // Load when the popup opens; also reload when the agent finishes a turn while
   // open, since restrictions may have changed the visible tool set.
@@ -159,8 +168,10 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
 
   const onPrefsChange = useCallback((next: PanelPrefs) => {
     setPrefs(next)
-    writePrefs(next)
+    publishPrefs(next)
   }, [])
+
+  useEffect(() => subscribePrefs(setPrefs), [])
 
   const scopeRef = useRef<ConfirmScope | null>(null)
   const [, rerender] = useState(0)
@@ -263,6 +274,7 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
         ? (
           <div
             className="dshct-overlay"
+            data-composer-overlay=""
             // Backdrop click closes. The panel stops propagation, so only a click
             // on the backdrop itself (target === the overlay) reaches here. The
             // document-level outside-click handler cannot serve this: the overlay
@@ -329,6 +341,7 @@ export const inject = ['slots', 'locale']
  * @param ctx - the client root context (narrowed locally; see ./types.ts).
  */
 export function apply(ctx: ClientContext): void {
+  bindTriggerService(() => ctx.get?.('inputTriggers'))
   ctx.effect(() => injectStyles(), 'capability-toggle: styles')
   ctx.effect(() => ctx.locale.register(NS, dictionaries), 'capability-toggle: dictionaries')
   ctx.slots.inject('conversation.input.left', () =>

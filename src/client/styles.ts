@@ -15,6 +15,9 @@ const STYLE_ID = 'dsh-capability-toggle-plugin'
 const CSS = `
 .dshct-wrap{position:relative;display:inline-flex;align-items:center}
 
+.dshct-overlay,.dshct-panel,.dshct-confirm{user-select:text;-webkit-user-select:text}
+.dshct-overlay button,.dshct-panel button,.dshct-confirm button{user-select:text;-webkit-user-select:text}
+
 /* trigger button */
 .dshct-button{position:relative;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:0;transition:background .15s ease,color .15s ease}
 .dshct-button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}

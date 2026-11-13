@@ -104,6 +104,7 @@ function nodes(tree: unknown): Node[] {
 // leaf DOM contracts are tested using the existing shared render harness below.
 const seat = (React as any).__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED.ReactCurrentDispatcher
 let component: (props: unknown) => unknown
+let triggerService: unknown
 before(async () => {
   mkdirSync(new URL('../.temp/', import.meta.url), { recursive: true })
   const out = new URL('../.temp/confirm-client-hardening.mjs', import.meta.url)
@@ -117,6 +118,7 @@ before(async () => {
   const mod = await import(`${out.pathname}?v=${Date.now()}`)
   mod.apply({
     effect() { return () => {} },
+    get(name: string) { return name === 'inputTriggers' ? triggerService : undefined },
     locale: { register() { return () => {} } },
     slots: {
       inject(_name: string, fn: () => void) { fn() },
@@ -194,6 +196,29 @@ test('closed composer still subscribes and every guard kind renders a pending ca
     assert.equal(control.cards().length, 3)
     assert.equal(nodes(control.render()).some(n => n.props?.className === 'dshct-overlay'), false)
   } finally { control.unmount() }
+})
+
+test('the composer control applies the stored @ session-refs switch and restores on unmount', async () => {
+  const fileRow = { name: 'a.ts', icon: 'file', value: JSON.stringify({ kind: 'file', mention: '@a.ts' }) }
+  const sessionRow = { name: '旧会话', icon: 'session', value: JSON.stringify({ kind: 'session', mention: '@session-1' }) }
+  const source = { trigger: '@', name: 'reference', candidates: async () => [fileRow, sessionRow] }
+  triggerService = { live: { sources: [source] } }
+  const scope = globalThis as { localStorage?: unknown }
+  const realStorage = scope.localStorage
+  scope.localStorage = {
+    getItem: () => JSON.stringify({ showFraction: true, showUsage: true, levels: 'all', disableSessionRefs: true }),
+    setItem() {},
+    removeItem() {},
+  }
+  const control = mountControl()
+  try {
+    assert.deepEqual(await source.candidates('s', {}), [fileRow], 'mounting with the switch on must filter the @ menu')
+  } finally {
+    control.unmount()
+    scope.localStorage = realStorage
+    triggerService = undefined
+  }
+  assert.deepEqual(await source.candidates('s', {}), [fileRow, sessionRow], 'the unmount cleanup must restore the source')
 })
 
 test('session switch immediately hides stale cards and fences stale answer and SSE callbacks', () => {
