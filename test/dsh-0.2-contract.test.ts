@@ -101,21 +101,21 @@ test('all framework peers target the verified DSH 0.2 release candidates', () =>
     peerDependencies: Record<string, string>
     devDependencies: Record<string, string>
   }
-  // Both RCs the plugin is verified against (0.2.0-rc.1 per the README table,
-  // 0.2.1-rc.2 verified against the live tree), one shared range so no peer
-  // resolves a second framework copy.
-  const RANGE = '0.2.0-rc.1 || 0.2.1-rc.2'
+  // Every RC the plugin is verified against (0.2.0-rc.1 and 0.2.1-rc.2 per the
+  // README table, 0.2.1-rc.5 verified against the live tree), one shared range so
+  // no peer resolves a second framework copy.
+  const RANGE = '0.2.0-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.5'
   for (const [name, range] of Object.entries(pkg.peerDependencies)) {
     if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, RANGE, `${name} peer range`)
   }
   for (const [name, version] of Object.entries(pkg.devDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, '0.2.1-rc.2', `${name} dev version`)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, '0.2.1-rc.5', `${name} dev version`)
   }
   assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '~4.0.4')
-  // The dev pin mirrors the real 0.2.1-rc.2 runtime (its framework packages
-  // peer-require cordis ~4.0.5), so `pnpm peers check` stays clean here; the
-  // PEER range above stays ~4.0.4 because it must also admit an 0.2.0-rc.1
-  // runtime (which peer-requires only ~4.0.4).
+  // The dev pin mirrors the real 0.2.1-rc.5 runtime (its framework packages
+  // peer-require cordis ~4.0.5 and schemastery ~3.18.5), so `pnpm peers check`
+  // stays clean here; the cordis PEER range stays ~4.0.4 because it must also
+  // admit an 0.2.0-rc.1 runtime (which peer-requires only ~4.0.4).
   assert.equal(pkg.devDependencies['@deepseek-ai/cordis'], '4.0.5')
 })
 

@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] - 2026-11-13
+
+### Fixed
+
+- **The plugin no longer gets skipped at startup on DSH 0.2.1-rc.5.** Every
+  framework peer range stopped at `0.2.1-rc.2`, so `dsh web` reported the plugin
+  as incompatible and dropped the whole profile bundle before it could load.
+  The shared peer range is now
+  `0.2.0-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.5`; `evaluatePluginCompatibility` from
+  the runtime's own `dsh-app-boot` returns no unmet requirement for all three
+  versions.
+
+### Changed
+
+- **devDependencies follow the 0.2.1-rc.5 runtime**, and `schemastery` moves
+  from `~3.18.4`/`3.18.4` to `~3.18.5`/`3.18.5` because the rc.5 framework
+  packages peer-require `~3.18.5`; leaving it behind would resolve a second copy
+  for that package alone. cordis stays `~4.0.4` (`4.0.5` dev), which still
+  admits an 0.2.0-rc.1 runtime.
+
+### Development
+
+- **Two range guards stop this from recurring.** One asserts that every DSH
+  peer range admits the RC list users actually run (now including 0.2.1-rc.5),
+  the other that each peer range admits the version its own dev pin names.
+  Reverting a single peer range to `0.2.0-rc.1 || 0.2.1-rc.2` fails both.
+
 ## [2.2.0] - 2026-11-13
 
 ### Added

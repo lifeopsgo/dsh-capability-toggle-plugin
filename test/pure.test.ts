@@ -503,12 +503,33 @@ test('every DSH peer range admits the prereleases users actually run', async () 
   // every DSH tuple needs the `>=0.1.N-0` anchor below. v1.1.0's range rejected
   // the 0.1.2/0.1.3 prereleases (fixed in v1.2.1); the same drift recurred when
   // the line moved to 0.1.5, so this list grows with each tuple DSH ships.
-  const mustAdmit = ['0.2.0-rc.1']
+  const mustAdmit = ['0.2.0-rc.1', '0.2.1-rc.2', '0.2.1-rc.5']
   const mustReject = ['0.2.0', '0.1.5', '0.1.5-rc.2', '0.0.1-rc.1']
   for (const [name, range] of dshPeers) {
     for (const v of mustAdmit) assert.ok(satisfies(v, range), `${name}@${v} must satisfy ${range}`)
     for (const v of mustReject) assert.ok(!satisfies(v, range), `${name}@${v} must NOT satisfy ${range}`)
   }
+})
+
+test('every DSH peer range admits the runtime the dev dependencies pin', async () => {
+  const { readFileSync } = await import('node:fs')
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+    peerDependencies: Record<string, string>
+    devDependencies: Record<string, string>
+  }
+  // v2.2.0 shipped devDeps on 0.2.1-rc.2 while the peers stopped at the same RC,
+  // so a user on 0.2.1-rc.5 hit "incompatible with dsh" and the whole plugin was
+  // skipped at startup. The dev pin IS the runtime we develop and verify against,
+  // so it must satisfy the range every time the pin moves.
+  let checked = 0
+  for (const [name, range] of Object.entries(pkg.peerDependencies)) {
+    if (!name.startsWith('@deepseek-ai/dsh-')) continue
+    const version = pkg.devDependencies[name]
+    assert.equal(typeof version, 'string', `${name} is a peer with no dev pin to verify against`)
+    assert.ok(satisfies(version, range), `${name} dev pin ${version} does not satisfy peer range ${range}`)
+    checked += 1
+  }
+  assert.ok(checked >= 10, 'expected the full DSH peer set, checked ' + String(checked))
 })
 
 test('the DSH peer ranges are all one string, so widening stays uniform', async () => {

@@ -29,7 +29,7 @@
 ## 安装
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.2.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.0
 dsh --profile web web
 ```
 
@@ -39,7 +39,7 @@ dsh --profile web web
 
 ## 兼容性
 
-面向 DSH 0.2.1-rc.2 开发和验证（也兼容 0.2.0-rc.1）。其他版本未验证。
+面向 DSH 0.2.1-rc.5 开发和验证（也兼容 0.2.1-rc.2 与 0.2.0-rc.1）。其他版本未验证。
 
 ## 开发
 

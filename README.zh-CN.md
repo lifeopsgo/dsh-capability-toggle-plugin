@@ -25,12 +25,13 @@
 
 ## 兼容的 DSH 版本
 
-本版本面向 **DSH 0.2.0-rc.1 与 0.2.1-rc.2**（peer 范围为 `0.2.0-rc.1 || 0.2.1-rc.2`，两个版本均在真实环境中验证）。Host 已迁移到 `agent/created` 生命周期、持久化 `configEditor` 写入和 Loader volatile 配置更新；每次写入都会重新协调全部仍存活的 agent binding。
+本版本面向 **DSH 0.2.0-rc.1、0.2.1-rc.2 与 0.2.1-rc.5**（peer 范围为 `0.2.0-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.5`，三个版本均在真实环境中验证）。Host 已迁移到 `agent/created` 生命周期、持久化 `configEditor` 写入和 Loader volatile 配置更新；每次写入都会重新协调全部仍存活的 agent binding。
 
 | DSH 版本 | 状态 | 验证方式 |
 | --- | --- | --- |
 | 0.2.0-rc.1 | 支持 | Host 与 Client 类型检查、生产构建、框架链接校验、组合 profile 检查、浏览器验证，以及在 v2.0.1 时于 0.2.0-rc.1 依赖下全量跑绿的自动化测试（380 项） |
 | 0.2.1-rc.2 | 支持 | 面向 0.2.1-rc.2 真实运行环境的同套门禁，另含能力面板与其偏好开关实时切换的端到端浏览器验证 |
+| 0.2.1-rc.5 | 支持 | v2.3.0 起把 devDependencies 与全部 peer 范围同步到 0.2.1-rc.5，并在该运行时下跑通类型检查、全量测试（412 项）与生产构建；两条宿主接缝（composer 的 `data-composer-overlay` 放行口、`inputTriggers` 的 source 名单）由测试对 rc.5 产物断言 |
 
 其他 DSH 版本不声明支持。
 
@@ -39,7 +40,7 @@
 需要 **Node.js ^22.19.0 或 ≥ 24.0.0**（与 DSH 0.2.x 相同）。
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.2.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.0
 dsh --profile web web
 ```
 
@@ -50,7 +51,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.2.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.0
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin

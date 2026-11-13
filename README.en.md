@@ -23,8 +23,9 @@ A **DeepSeek Harness (DSH) WebUI** plugin for controlling **skills, MCP servers,
 
 ## Compatible DSH versions
 
-This release targets **DSH 0.2.0-rc.1 and 0.2.1-rc.2** (peer range
-`0.2.0-rc.1 || 0.2.1-rc.2`; both verified in a real environment). The Host uses
+This release targets **DSH 0.2.0-rc.1, 0.2.1-rc.2 and 0.2.1-rc.5** (peer range
+`0.2.0-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.5`; all three verified in a real
+environment). The Host uses
 the `agent/created` lifecycle, persistent `configEditor` edits, and Loader
 volatile-config updates; each committed change reconciles every live agent
 binding.
@@ -33,6 +34,7 @@ binding.
 | --- | --- | --- |
 | 0.2.0-rc.1 | supported | Host and Client typechecks, production build, framework-link validation, composed-profile inspection, browser verification, and the full automated suite run green under 0.2.0-rc.1 dependencies at v2.0.1 (380 tests) |
 | 0.2.1-rc.2 | supported | The same gates against the live 0.2.1-rc.2 runtime, plus end-to-end browser verification of the capability panel and its live preference toggling |
+| 0.2.1-rc.5 | supported | Since v2.3.0 the devDependencies and every peer range follow 0.2.1-rc.5, and typecheck, the full suite (412 tests) and the production build run against it; both host seams (the composer `data-composer-overlay` escape hatch and the `inputTriggers` source roster) are asserted against the rc.5 artifacts |
 
 This release makes no compatibility claim for other DSH versions.
 
@@ -41,7 +43,7 @@ This release makes no compatibility claim for other DSH versions.
 Requires **Node.js ^22.19.0 or ≥ 24.0.0** (same as DSH 0.2.x).
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.2.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.0
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -57,7 +59,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.2.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.0
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin
