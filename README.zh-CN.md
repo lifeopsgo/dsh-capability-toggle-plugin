@@ -40,7 +40,7 @@
 需要 **Node.js ^22.19.0 或 ≥ 24.0.0**（与 DSH 0.2.x 相同）。
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.1
 dsh --profile web web
 ```
 
@@ -51,7 +51,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.1
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin

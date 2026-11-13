@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [2.3.1] - 2026-11-13
+
+### Development
+
+- **The guard linearity test no longer fails on a slow CI runner.** The `rm`
+  token-flood assertion used a single absolute bound of 1500 ms, and the shared
+  runner read 1531 ms on unchanged code (the same commit passed when re-run),
+  turning main red at random. Both samples now take the best of two runs and the
+  bound sits at 4000 ms — above the slowest linear reading and below the
+  quadratic one (6908 ms buggy, ~15x slope). The slope check, which is what
+  actually discriminates linear from quadratic, is unchanged; stubbing the gap
+  bound out still fails it at 15.8x. No product code changed.
+
 ## [2.3.0] - 2026-11-13
 
 ### Fixed

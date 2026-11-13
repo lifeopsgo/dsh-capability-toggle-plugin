@@ -43,7 +43,7 @@ This release makes no compatibility claim for other DSH versions.
 Requires **Node.js ^22.19.0 or ≥ 24.0.0** (same as DSH 0.2.x).
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.1
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -59,7 +59,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.0
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.1
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin

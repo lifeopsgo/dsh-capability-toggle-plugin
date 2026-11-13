@@ -74,12 +74,20 @@ test('dangerous-shell stays linear on adversarial token and whitespace input', (
   assert.ok(measure(`Remove-Item${' '.repeat(64000)}x`, 'pwsh') < 500, 'ps whitespace run')
   // The axis the gap bound exists for: a separator-free run of `rm` positions,
   // where each occurrence scans toward end-of-line. Measured with the bound in
-  // place this is linear (10k/20k/40k -> 111/235/476 ms); with the bound removed
-  // it is quadratic (471/1772/6908 ms), so a slope check discriminates the two
-  // where a single absolute bound does not.
-  const n1 = measure(('rm a ').repeat(10000))
-  const n2 = measure(('rm a ').repeat(40000))
-  assert.ok(n2 < 1500, `rm token flood must be linear, got ${n2.toFixed(0)} ms`)
+  // place this is linear (10k/20k/40k -> 111/235/476 ms locally); with the bound
+  // removed it is quadratic (471/1772/6908 ms), so a slope check discriminates
+  // the two where a single absolute bound does not.
+  //
+  // Both numbers are taken as the best of two runs: a shared CI runner is about
+  // 4x slower here than a laptop and occasionally stalls mid-run (1531 ms once,
+  // over the old 1500 ms bound, on unchanged code), and a first run pays JIT
+  // warmup. The bound below is a catastrophe check, not the discriminator — it
+  // sits well above the slowest linear reading and well below the quadratic one
+  // even after the runner's slowdown.
+  const best = (command: string): number => Math.min(measure(command), measure(command))
+  const n1 = best(('rm a ').repeat(10000))
+  const n2 = best(('rm a ').repeat(40000))
+  assert.ok(n2 < 4000, `rm token flood must be linear, got ${n2.toFixed(0)} ms`)
   assert.ok(n2 / Math.max(n1, 1) < 12, `rm token flood slope must stay linear (4x input -> ${(n2 / Math.max(n1, 1)).toFixed(1)}x)`)
   assert.ok(measure(('git push ').repeat(30000)) < 1500, 'git token flood')
 })
