@@ -23,27 +23,41 @@ A **DeepSeek Harness (DSH) WebUI** plugin for controlling **skills, MCP servers,
 
 ## Compatible DSH versions
 
-This release targets **DSH 0.2.0-rc.1, 0.2.1-rc.2 and 0.2.1-rc.5** (peer range
-`0.2.0-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.5`; all three verified in a real
-environment). The Host uses
-the `agent/created` lifecycle, persistent `configEditor` edits, and Loader
-volatile-config updates; each committed change reconciles every live agent
-binding.
+This plugin targets the **DSH 0.2 generation**, declared as one range:
 
-| DSH version | Status | How it was checked |
-| --- | --- | --- |
-| 0.2.0-rc.1 | supported | Host and Client typechecks, production build, framework-link validation, composed-profile inspection, browser verification, and the full automated suite run green under 0.2.0-rc.1 dependencies at v2.0.1 (380 tests) |
-| 0.2.1-rc.2 | supported | The same gates against the live 0.2.1-rc.2 runtime, plus end-to-end browser verification of the capability panel and its live preference toggling |
-| 0.2.1-rc.5 | supported | Since v2.3.0 the devDependencies and every peer range follow 0.2.1-rc.5, and typecheck, the full suite (412 tests) and the production build run against it; both host seams (the composer `data-composer-overlay` escape hatch and the `inputTriggers` source roster) are asserted against the rc.5 artifacts |
+```
+>=0.2.0-0 <0.3.0-0
+```
 
-This release makes no compatibility claim for other DSH versions.
+That means "any 0.2 release, prereleases included". Every DSH version on npm is a
+prerelease, so enumerating exact release candidates meant the plugin was declared
+incompatible and skipped at startup whenever the host shipped a new one. Since
+v2.4.0 a single generation-scoped range covers the whole 0.2 line.
+
+The upper bound is `<0.3.0-0` on purpose. The compatibility gate evaluates semver
+with `includePrerelease: true`, where `0.3.0-rc.1` sorts *below* `0.3.0`; writing
+`<0.3.0` would let the next generation through, and 0.3 carries breaking changes.
+
+| DSH version | How it was checked |
+| --- | --- |
+| 0.2.0-rc.1 | Full suite green under those dependencies at v2.0.1 (380 tests) |
+| 0.2.1-rc.2 | The same gates at v2.1.0, plus browser verification |
+| 0.2.1-rc.5 | Typecheck, 412 tests and production build at v2.3.0 |
+| 0.2.2-rc.3 | Typecheck, 412 tests and production build at v2.4.0, plus confirmation that the host config entry and the client slot occupant are live in that runtime |
+
+**A range states whether the plugin installs; it cannot state whether an API
+exists.** The plugin relies on two host seams — the composer's
+`data-composer-overlay` escape hatch and the `inputTriggers` source roster — and
+tests assert both against the installed artifacts. If a seam disappears the
+related feature degrades instead of throwing. Other 0.2.x versions have not been
+run through the gates one by one.
 
 ## Quick start
 
 Requires **Node.js ^22.19.0 or ≥ 24.0.0** (same as DSH 0.2.x).
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.4.0
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -59,7 +73,7 @@ Open the control beside the ➕ button while the agent is idle. Replace `web` wi
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.4.0
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin

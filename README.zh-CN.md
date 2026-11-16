@@ -25,22 +25,33 @@
 
 ## 兼容的 DSH 版本
 
-本版本面向 **DSH 0.2.0-rc.1、0.2.1-rc.2 与 0.2.1-rc.5**（peer 范围为 `0.2.0-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.5`，三个版本均在真实环境中验证）。Host 已迁移到 `agent/created` 生命周期、持久化 `configEditor` 写入和 Loader volatile 配置更新；每次写入都会重新协调全部仍存活的 agent binding。
+本插件面向 **DSH 0.2 世代**，peer 声明为一条区间：
 
-| DSH 版本 | 状态 | 验证方式 |
-| --- | --- | --- |
-| 0.2.0-rc.1 | 支持 | Host 与 Client 类型检查、生产构建、框架链接校验、组合 profile 检查、浏览器验证，以及在 v2.0.1 时于 0.2.0-rc.1 依赖下全量跑绿的自动化测试（380 项） |
-| 0.2.1-rc.2 | 支持 | 面向 0.2.1-rc.2 真实运行环境的同套门禁，另含能力面板与其偏好开关实时切换的端到端浏览器验证 |
-| 0.2.1-rc.5 | 支持 | v2.3.0 起把 devDependencies 与全部 peer 范围同步到 0.2.1-rc.5，并在该运行时下跑通类型检查、全量测试（412 项）与生产构建；两条宿主接缝（composer 的 `data-composer-overlay` 放行口、`inputTriggers` 的 source 名单）由测试对 rc.5 产物断言 |
+```
+>=0.2.0-0 <0.3.0-0
+```
 
-其他 DSH 版本不声明支持。
+含义是「0.2 的任意版本，含预发布」。npm 上的 DSH 全部版本都是 prerelease，逐条枚举 rc 的结果就是官方每发一版，插件在启动时被判定不兼容并整包跳过；v2.4.0 起改为按世代声明的区间，0.2 线上的新 rc 不再需要改版本号。
+
+上界刻意写成 `<0.3.0-0` 而不是 `<0.3.0`：DSH 的兼容校验按 `includePrerelease: true` 计算 semver，`0.3.0-rc.1` 排在 `0.3.0` 之下，写 `<0.3.0` 会把它放进来。0.3 世代属于破坏性变更，必须拦住。
+
+**已验证的运行时**
+
+| DSH 版本 | 验证方式 |
+| --- | --- |
+| 0.2.0-rc.1 | v2.0.1 时在该依赖下全量跑绿（380 项） |
+| 0.2.1-rc.2 | v2.1.0 时的同套门禁，含浏览器端实测 |
+| 0.2.1-rc.5 | v2.3.0 时的类型检查、412 项测试与生产构建 |
+| 0.2.2-rc.3 | v2.4.0 时的类型检查、412 项测试、生产构建，并在该运行时里确认宿主配置条目与客户端插槽占用均生效 |
+
+**区间能表达「能不能装」，表达不了「某个 API 在不在」。** 插件依赖两条宿主接缝——composer 的 `data-composer-overlay` 放行口与 `inputTriggers` 的 source 名单——两者都有测试对已安装产物断言；接缝消失时相关功能退化为不生效，不会让整个插件报错。其余 0.2.x 版本没有再逐版跑过门禁，跑门禁的成本请按上表推算。
 
 ## 快速开始
 
 需要 **Node.js ^22.19.0 或 ≥ 24.0.0**（与 DSH 0.2.x 相同）。
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.4.0
 dsh --profile web web
 ```
 
@@ -51,7 +62,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.3.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.4.0
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin

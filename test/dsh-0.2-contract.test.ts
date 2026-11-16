@@ -101,22 +101,25 @@ test('all framework peers target the verified DSH 0.2 release candidates', () =>
     peerDependencies: Record<string, string>
     devDependencies: Record<string, string>
   }
-  // Every RC the plugin is verified against (0.2.0-rc.1 and 0.2.1-rc.2 per the
-  // README table, 0.2.1-rc.5 verified against the live tree), one shared range so
-  // no peer resolves a second framework copy.
-  const RANGE = '0.2.0-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.5'
+  // One generation-scoped range for every DSH 0.2 release, prereleases included
+  // (the gate checks with includePrerelease). The upper bound is `<0.3.0-0`, not
+  // `<0.3.0`: with prereleases enabled 0.3.0-rc.1 sorts BELOW 0.3.0, so the plain
+  // form would let the next generation through. Enumerating exact RCs instead
+  // made every DSH prerelease brick the plugin at startup, which is what this
+  // range replaced.
+  const RANGE = '>=0.2.0-0 <0.3.0-0'
   for (const [name, range] of Object.entries(pkg.peerDependencies)) {
     if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, RANGE, `${name} peer range`)
   }
   for (const [name, version] of Object.entries(pkg.devDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, '0.2.1-rc.5', `${name} dev version`)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, '0.2.2-rc.3', `${name} dev version`)
   }
-  assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '~4.0.4')
-  // The dev pin mirrors the real 0.2.1-rc.5 runtime (its framework packages
-  // peer-require cordis ~4.0.5 and schemastery ~3.18.5), so `pnpm peers check`
-  // stays clean here; the cordis PEER range stays ~4.0.4 because it must also
-  // admit an 0.2.0-rc.1 runtime (which peer-requires only ~4.0.4).
-  assert.equal(pkg.devDependencies['@deepseek-ai/cordis'], '4.0.5')
+  assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '^4.0.4')
+  // The dev pin mirrors the real 0.2.2-rc.3 runtime (its framework packages
+  // peer-require cordis ~4.1.0 and schemastery ~3.19.0), so `pnpm peers check`
+  // stays clean here; the cordis PEER range stays ^4.0.4 so it also admits the
+  // 4.0.5 an older 0.2.x runtime ships.
+  assert.equal(pkg.devDependencies['@deepseek-ai/cordis'], '4.1.0')
 })
 
 test('the lockfile agrees with package.json so CI frozen installs cannot drift', () => {

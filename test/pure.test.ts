@@ -463,11 +463,17 @@ function meetsComparator(c: Comparator, v: SemVer): boolean {
   }
 }
 
-function satisfies(version: string, range: string): boolean {
+function satisfies(version: string, range: string, includePrerelease = false): boolean {
   const v = parseSemVer(version)
   return range.split('||').some((clause) => {
     const comps = clause.trim().split(/\s+/).filter(Boolean).flatMap(expandComparator)
     if (!comps.every(c => meetsComparator(c, v))) return false
+    // The DSH compatibility gate calls semver with includePrerelease: true, which
+    // drops the same-tuple requirement below. A range that must admit every
+    // prerelease of a generation (>=0.2.0-0 <0.3.0-0) only works under that mode,
+    // so the manifest tests below ask for it explicitly instead of inheriting the
+    // stricter default this helper models for the prerelease-rule test.
+    if (includePrerelease) return true
     // THE PRERELEASE RULE, and the reason this test exists: a prerelease version
     // is accepted only when some comparator in the set names a prerelease of the
     // SAME [major,minor,patch] tuple. So `>=0.1.1-rc.0` admits 0.1.1-rc.2 but
@@ -503,11 +509,15 @@ test('every DSH peer range admits the prereleases users actually run', async () 
   // every DSH tuple needs the `>=0.1.N-0` anchor below. v1.1.0's range rejected
   // the 0.1.2/0.1.3 prereleases (fixed in v1.2.1); the same drift recurred when
   // the line moved to 0.1.5, so this list grows with each tuple DSH ships.
-  const mustAdmit = ['0.2.0-rc.1', '0.2.1-rc.2', '0.2.1-rc.5']
-  const mustReject = ['0.2.0', '0.1.5', '0.1.5-rc.2', '0.0.1-rc.1']
+  // Every 0.2 release, including the prereleases the project ships and the ones
+  // it has not shipped yet: the range must not need editing per RC.
+  const mustAdmit = ['0.2.0-rc.1', '0.2.1-rc.2', '0.2.1-rc.5', '0.2.2-rc.3', '0.2.2', '0.2.9-rc.1']
+  // The next generation and everything older stay out; 0.3.0-rc.1 is the one a
+  // plain `<0.3.0` upper bound would wrongly admit.
+  const mustReject = ['0.3.0-0', '0.3.0-rc.1', '0.3.0', '0.1.5', '0.1.5-rc.2', '0.0.1-rc.1']
   for (const [name, range] of dshPeers) {
-    for (const v of mustAdmit) assert.ok(satisfies(v, range), `${name}@${v} must satisfy ${range}`)
-    for (const v of mustReject) assert.ok(!satisfies(v, range), `${name}@${v} must NOT satisfy ${range}`)
+    for (const v of mustAdmit) assert.ok(satisfies(v, range, true), `${name}@${v} must satisfy ${range}`)
+    for (const v of mustReject) assert.ok(!satisfies(v, range, true), `${name}@${v} must NOT satisfy ${range}`)
   }
 })
 
@@ -526,7 +536,7 @@ test('every DSH peer range admits the runtime the dev dependencies pin', async (
     if (!name.startsWith('@deepseek-ai/dsh-')) continue
     const version = pkg.devDependencies[name]
     assert.equal(typeof version, 'string', `${name} is a peer with no dev pin to verify against`)
-    assert.ok(satisfies(version, range), `${name} dev pin ${version} does not satisfy peer range ${range}`)
+    assert.ok(satisfies(version, range, true), `${name} dev pin ${version} does not satisfy peer range ${range}`)
     checked += 1
   }
   assert.ok(checked >= 10, 'expected the full DSH peer set, checked ' + String(checked))
@@ -547,7 +557,7 @@ test('the DSH peer ranges are all one string, so widening stays uniform', async 
   // Skills tab. All DSH peers must therefore carry the identical range.
   assert.equal(dshRanges.size, 1, 'every @deepseek-ai/dsh-* peer must share one range')
   // cordis and schemastery are versioned independently and stay out of this.
-  assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '~4.0.4')
+  assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '^4.0.4')
 })
 
 // --- collectPromptGates probe (H4) ------------------------------------------

@@ -4,6 +4,45 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] - 2026-11-17
+
+### Changed
+
+- **The compatibility declaration is now one range for the whole DSH 0.2
+  generation instead of a list of exact release candidates.** Every DSH version
+  on npm is a prerelease, so the enumerated ranges
+  (`0.2.0-rc.1 || 0.2.1-rc.2 || ...`) went stale on each host release and the
+  startup gate skipped the plugin — most recently on 0.2.2-rc.3. The shared peer
+  range is now `>=0.2.0-0 <0.3.0-0`: any 0.2 release, prereleases included, and
+  nothing from the breaking 0.3 generation.
+
+- **The upper bound is `<0.3.0-0`, not `<0.3.0`.** The gate calls semver with
+  `includePrerelease: true`, where `0.3.0-rc.1` sorts below `0.3.0`; the plain
+  form would admit the next generation.
+
+- **devDependencies follow DSH 0.2.2-rc.3**, with cordis `4.1.0` and schemastery
+  `3.19.0` — the versions that runtime's framework packages peer-require. The
+  cordis peer range widens from `~4.0.4` to `^4.0.4` so one declaration admits
+  both the 4.0.5 of older 0.2.x runtimes and the 4.1.0 of this one, and
+  schemastery likewise moves to `^3.18.4`.
+
+### Development
+
+- **The test semver helper models the gate's prerelease mode.** `satisfies` grew
+  an `includePrerelease` argument; without it the repo's own helper rejected
+  `0.2.1-rc.2` against `>=0.2.0-0 <0.3.0-0` while the real gate accepts it,
+  because default semver requires a comparator on the same major.minor.patch
+  tuple.
+
+- **Host seam assertions no longer match literal quoting.** The 0.2.2-rc.3
+  bundles quote with backticks where 0.2.1-rc.5 used double quotes, so the exact
+  strings reported a false regression on an upgrade that changed neither seam.
+  Both now match the call shape.
+
+- **The version guards cover the new policy**: every 0.2 prerelease from
+  0.2.0 to a future 0.2.9-rc.1 must be admitted, `0.3.0-0`/`0.3.0-rc.1`/`0.3.0`
+  must be rejected, and each peer range must admit its own dev pin.
+
 ## [2.3.1] - 2026-11-13
 
 ### Development

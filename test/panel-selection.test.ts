@@ -211,8 +211,13 @@ test('the installed host still exempts [data-composer-overlay] from its composer
     new URL('../node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js', import.meta.url),
     'utf8',
   )
-  assert.ok(
-    host.includes('closest("[data-composer-overlay]")'),
+  // Match the call, not the quoting: the host bundle is minified differently per
+  // release and has shipped both `closest("[data-composer-overlay]")` and the
+  // backtick form, so an exact-string check reports a false regression on an
+  // upgrade that changed nothing.
+  assert.match(
+    host,
+    /closest\(\s*[^)]*data-composer-overlay[^)]*\)/,
     'the popup relies on this host escape hatch; if the host renamed it, the selection fix silently regresses',
   )
 })

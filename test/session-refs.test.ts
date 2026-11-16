@@ -169,7 +169,9 @@ test('the installed host still keeps the trigger roster in live.sources', () => 
   )
   assert.ok(host.includes('registerSource(src)'), 'the kill switch relies on registerSource keeping the source object')
   assert.ok(host.includes('live.sources.push(src)'), 'the kill switch walks live.sources to find the @ source')
-  assert.ok(host.includes('super(ctx, "inputTriggers")'), 'the kill switch resolves the service as ctx.get("inputTriggers")')
+  // Quote-insensitive: the shipped bundle quoted this name with double quotes in
+  // 0.2.1-rc.5 and with backticks in 0.2.2-rc.3.
+  assert.match(host, /super\(ctx,\s*[^)]*inputTriggers[^)]*\)/, 'the kill switch resolves the service as ctx.get("inputTriggers")')
 })
 
 test('the built client bundle ships the kill switch', () => {
