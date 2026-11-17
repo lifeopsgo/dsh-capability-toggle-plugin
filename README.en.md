@@ -11,7 +11,7 @@
 
 [![中文](https://img.shields.io/badge/README-中文-red?style=flat-square)](./README.md) [![English](https://img.shields.io/badge/README-English-blue?style=flat-square)](./README.en.md) [![详细中文](https://img.shields.io/badge/README-详细中文-orange?style=flat-square)](./README.zh-CN.md)
 
-<img alt="Capability controls for Skills, MCP, Tools, Prompt, and Security" src="./docs/screenshot.jpeg" width="900">
+<img alt="Capability controls for Skills, MCP, Tools, Prompt, and Security" src="./docs/demo.gif" width="900">
 
 <sub>Session · Project · Global — blue check = on, red cross = off, dashed dash = unset.</sub>
 

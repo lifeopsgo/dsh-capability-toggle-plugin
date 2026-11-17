@@ -37,7 +37,7 @@
     "LICENSE",
     "README.md",
     "README.zh-CN.md",
-    "docs/screenshot.jpeg"
+    "docs/demo.gif"
   ],
   "scripts": {
     "build": "tsdown",

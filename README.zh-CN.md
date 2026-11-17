@@ -11,7 +11,7 @@
 
 [![中文](https://img.shields.io/badge/README-中文-red?style=flat-square)](./README.md) [![English](https://img.shields.io/badge/README-English-blue?style=flat-square)](./README.en.md) [![详细中文](https://img.shields.io/badge/README-详细中文-orange?style=flat-square)](./README.zh-CN.md)
 
-<img alt="技能、MCP、工具、提示词与安全能力开关" src="./docs/screenshot.jpeg" width="900">
+<img alt="技能、MCP、工具、提示词与安全能力开关" src="./docs/demo.gif" width="900">
 
 <sub>会话 · 项目 · 全局 —— 蓝色对勾 = 开，红色叉 = 关，虚线横杠 = 未设。</sub>
 
