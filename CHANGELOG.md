@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [2.4.1] - 2026-11-17
+
+### Fixed
+
+- **The popup is centered on the viewport again.** DSH renders this control in
+  the composer tool row, and that row is a `container-type: inline-size` box,
+  which makes it the containing block for `position: fixed` descendants. The
+  overlay therefore centered on the row — a strip near the composer — instead of
+  the screen, so the panel hung off to one side. The host documents the rule in
+  the `conversation.input.left` slot catalog: fixed overlays "must portal to the
+  document body because the docked composer contains them". The overlay and the
+  blocking-guard cards now render into a body-level host, created on mount and
+  removed on unmount.
+
+- **Outside-click dismissal follows the popup out of the composer.** The
+  document `mousedown` handler used to test only the trigger's wrapper; the
+  portaled popup is no longer its DOM descendant, so a click inside the panel
+  would have closed it. The predicate now tests both roots.
+
+### Development
+
+- `react-dom` joins the declared peers (`^18.3.1`) and devDependencies: the web
+  frontend's module table already answers `react-dom` and `react-dom/client`, and
+  several shipped plugins import `createPortal` from it.
+
+- Two tests pin the portal placement — the guard cards and the overlay must not
+  appear among the wrapper's inline children — using a `react-dom` stub whose
+  portal node the element walkers descend.
+
 ## [2.4.0] - 2026-11-17
 
 ### Changed

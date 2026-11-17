@@ -21,6 +21,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 
 import type {
@@ -28,7 +30,9 @@ import type {
 } from '../shared/types.ts'
 import { fetchState, respondConfirm, subscribeConfirm, writeState, writeStateMany } from './api.ts'
 import { ConfirmationCard, Panel } from './components.tsx'
+import { insideAny } from './dismiss.ts'
 import { installSelectionClickGuard } from './drag-guard.ts'
+import { usePortalHost } from './portal.ts'
 import { applySessionRefsPref, bindTriggerService } from './session-refs.ts'
 import { NS, dictionaries } from './locales.ts'
 import { publishPrefs, readPrefs, subscribePrefs } from './prefs.ts'
@@ -58,6 +62,15 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
   const [loading, setLoading] = useState(false)
   const [prefs, setPrefs] = useState<PanelPrefs>(readPrefs)
   const wrapRef = useRef<HTMLDivElement | null>(null)
+  // The overlay lives in a body-level portal, so it is not a DOM descendant of
+  // wrapRef; outside-click dismissal has to test this node as well.
+  const popupRef = useRef<HTMLDivElement | null>(null)
+  // The composer tool row is a `container-type: inline-size` box, which becomes
+  // the containing block for `position: fixed` children: an overlay rendered
+  // inline centers on that row, not the viewport. The host's slot catalog says
+  // fixed overlays must portal to the document body for this reason.
+  const popupHost = usePortalHost()
+  const confirmHost = usePortalHost()
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   const aliveRef = useRef(true)
   // Read and write each get their OWN monotonic token; a settled request
@@ -113,7 +126,8 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
-      if (wrapRef.current !== null && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+      if (insideAny(e.target, [wrapRef.current, popupRef.current])) return
+      setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
     document.addEventListener('mousedown', onDown)
@@ -272,50 +286,62 @@ function CapabilityToggleControl(props: InputZoneProps): JSX.Element | null {
       </button>
       {open
         ? (
-          <div
-            className="dshct-overlay"
-            data-composer-overlay=""
-            // Backdrop click closes. The panel stops propagation, so only a click
-            // on the backdrop itself (target === the overlay) reaches here. The
-            // document-level outside-click handler cannot serve this: the overlay
-            // is a DOM descendant of the wrap, so a backdrop click counts as
-            // "inside" there and would never close.
-            onMouseDown={e => { if (e.target === e.currentTarget) setOpen(false) }}
-          >
-            {loading && projection === null
-              ? <div className="dshct-panel dshct-panel-loading">{t('loading')}</div>
-              : projection === null
-                ? <div className="dshct-panel dshct-panel-loading">{t('unavailable')}</div>
-                : (
-                  <Panel
-                    projection={projection}
-                    disabled={running}
-                    t={t}
-                    prefs={prefs}
-                    onPrefsChange={onPrefsChange}
-                    onSet={onSet}
-                    onSetMany={onSetMany}
-                  />
-                )}
-          </div>
+          renderPortaled(popupHost,
+            <div
+              className="dshct-overlay"
+              ref={popupRef}
+              // Backdrop click closes. The panel stops propagation, so only a
+              // click on the backdrop itself (target === the overlay) reaches
+              // here; the document-level outside-click handler also covers it.
+              onMouseDown={e => { if (e.target === e.currentTarget) setOpen(false) }}
+            >
+              {loading && projection === null
+                ? <div className="dshct-panel dshct-panel-loading">{t('loading')}</div>
+                : projection === null
+                  ? <div className="dshct-panel dshct-panel-loading">{t('unavailable')}</div>
+                  : (
+                    <Panel
+                      projection={projection}
+                      disabled={running}
+                      t={t}
+                      prefs={prefs}
+                      onPrefsChange={onPrefsChange}
+                      onSet={onSet}
+                      onSetMany={onSetMany}
+                    />
+                  )}
+            </div>,
+          )
         )
         : null}
-      {confirmList.map(entry => (
-        <ConfirmationCard
-          key={entry.card.id}
-          guardId={entry.card.guardId}
-          guardAction={entry.card.guardAction}
-          reason={entry.card.reason}
-          toolName={entry.card.toolName}
-          detail={entry.card.detail}
-          busy={entry.status === 'busy'}
-          failed={entry.status === 'retry'}
-          t={t}
-          onAnswer={decision => onAnswer(entry.card.id, decision)}
-        />
-      ))}
+      {confirmList.length > 0
+        ? (
+          renderPortaled(confirmHost,
+            confirmList.map(entry => (
+              <ConfirmationCard
+                key={entry.card.id}
+                guardId={entry.card.guardId}
+                guardAction={entry.card.guardAction}
+                reason={entry.card.reason}
+                toolName={entry.card.toolName}
+                detail={entry.card.detail}
+                busy={entry.status === 'busy'}
+                failed={entry.status === 'retry'}
+                t={t}
+                onAnswer={decision => onAnswer(entry.card.id, decision)}
+              />
+            )),
+          )
+        )
+        : null}
     </div>
   )
+}
+
+/** Render into the body-level host when one exists, otherwise in place. */
+function renderPortaled(host: HTMLElement | null, children: ReactNode): ReactNode {
+  if (host === null) return children
+  return createPortal(children, host)
 }
 
 /** Inline sliders glyph (self-contained; avoids depending on the icon package). */

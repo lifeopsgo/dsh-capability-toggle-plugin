@@ -1,6 +1,6 @@
 {
   "name": "dsh-capability-toggle-plugin",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "private": true,
   "description": "DSH WebUI capability controls for skills, MCP servers, tools, prompt injections, approvals, and safety guards at session, project, and global levels.",
   "keywords": [
@@ -72,15 +72,16 @@
     "@deepseek-ai/dsh-client-ui-conversation": ">=0.2.0-0 <0.3.0-0",
     "@deepseek-ai/dsh-client-ui-input-trigger": ">=0.2.0-0 <0.3.0-0",
     "@deepseek-ai/dsh-config-editor": ">=0.2.0-0 <0.3.0-0",
-    "@deepseek-ai/dsh-host-webserver": ">=0.2.0-0 <0.3.0-0",
     "@deepseek-ai/dsh-home-paths": ">=0.2.0-0 <0.3.0-0",
+    "@deepseek-ai/dsh-host-webserver": ">=0.2.0-0 <0.3.0-0",
     "@deepseek-ai/dsh-scope": ">=0.2.0-0 <0.3.0-0",
     "@deepseek-ai/dsh-skill": ">=0.2.0-0 <0.3.0-0",
     "@deepseek-ai/dsh-system-prompt": ">=0.2.0-0 <0.3.0-0",
     "@deepseek-ai/dsh-tools": ">=0.2.0-0 <0.3.0-0",
     "@deepseek-ai/dsh-user-approval": ">=0.2.0-0 <0.3.0-0",
     "@deepseek-ai/schemastery": "^3.18.4",
-    "react": "^18.3.1"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.1.0",
@@ -100,7 +101,9 @@
     "@deepseek-ai/schemastery": "3.19.0",
     "@types/node": "^26.4.0",
     "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "react": "18.3.1",
+    "react-dom": "18.3.1",
     "tsdown": "^0.22.14",
     "typescript": "^7.0.2"
   }

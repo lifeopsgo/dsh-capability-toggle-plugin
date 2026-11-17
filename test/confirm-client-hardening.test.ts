@@ -96,6 +96,9 @@ function nodes(tree: unknown): Node[] {
   if (Array.isArray(tree)) return tree.flatMap(nodes)
   if (!tree || typeof tree !== 'object') return []
   const node = tree as Node
+  if ((node as { $$typeof?: symbol }).$$typeof === Symbol.for('react.portal')) {
+    return nodes((node as unknown as { children: unknown }).children)
+  }
   return [node, ...nodes(node.props?.children)]
 }
 
@@ -111,6 +114,7 @@ before(async () => {
   const bundle = await Rolldown.rolldown({
     input: new URL('../src/client/index.tsx', import.meta.url).pathname,
     external: ['react', 'react/jsx-runtime'],
+    resolve: { alias: { 'react-dom': new URL('./stubs/react-dom.ts', import.meta.url).pathname } },
   })
   const { output } = await bundle.generate({ format: 'esm' })
   writeFileSync(out, output[0].code)
@@ -186,6 +190,101 @@ function mountControl(session = 's1') {
     unmount() { effects.forEach(effect => effect.cleanup?.()) },
   }
 }
+
+function portals(tree: unknown): { children: unknown }[] {
+  if (Array.isArray(tree)) return tree.flatMap(portals)
+  if (!tree || typeof tree !== 'object') return []
+  const node = tree as { $$typeof?: symbol; children?: unknown; props?: { children?: unknown } }
+  if (node.$$typeof === Symbol.for('react.portal')) {
+    return [{ children: node.children }, ...portals(node.children)]
+  }
+  return portals(node.props?.children)
+}
+
+/** Walk props.children only: a portal's children are NOT inline children, and
+ *  this is the walker that proves it. */
+function inlineNodes(tree: unknown): Node[] {
+  if (Array.isArray(tree)) return tree.flatMap(inlineNodes)
+  if (!tree || typeof tree !== 'object') return []
+  const node = tree as Node & { $$typeof?: symbol }
+  if (node.$$typeof === Symbol.for('react.portal')) return []
+  return [node, ...inlineNodes(node.props?.children)]
+}
+
+/** A document stub just large enough for the portal host, whose element only
+ *  needs the two members the hook touches. */
+function portalDocument(): { document: unknown; hosts: unknown[] } {
+  const hosts: unknown[] = []
+  return {
+    hosts,
+    document: {
+      createElement() {
+        const node = { className: '', remove() {} }
+        hosts.push(node)
+        return node
+      },
+      body: { appendChild() {} },
+      addEventListener() {},
+      removeEventListener() {},
+    },
+  }
+}
+
+test('the popup and the guard cards render through a body portal, not inline in the composer', () => {
+  const scope = globalThis as { document?: unknown }
+  const realDocument = scope.document
+  // The portal host is created by a mount effect with no dependencies, so the
+  // document stub has to exist before the control mounts.
+  scope.document = portalDocument().document
+  const control = mountControl()
+  try {
+    stream().emit(pending())
+    const tree = control.render()
+    const wrap = nodes(tree).find(n => n.props?.className === 'dshct-wrap')
+    assert.ok(wrap, 'the control wraps its trigger')
+    assert.ok(
+      !inlineNodes(wrap.props?.children).some(n => typeof n.type === 'function' && 'guardId' in (n.props ?? {})),
+      'guard cards must not sit inside the composer card',
+    )
+    assert.ok(
+      portals(tree).some(p => nodes(p.children).some(n => typeof n.type === 'function' && 'guardId' in (n.props ?? {}))),
+      'the guard card must render through the portal',
+    )
+  } finally {
+    control.unmount()
+    scope.document = realDocument
+  }
+})
+
+test('opening the popup portals the overlay out of the composer card', () => {
+  const scope = globalThis as { document?: unknown }
+  const realDocument = scope.document
+  scope.document = portalDocument().document
+  const control = mountControl()
+  try {
+    const closed = control.render()
+    const trigger = nodes(closed).find(n => n.props?.className === 'dshct-button')
+    assert.ok(trigger, 'the trigger renders')
+    ;(trigger.props!.onClick as () => void)()
+    // Render without flushing effects: opening the popup re-registers the
+    // refresh effect, and this harness does not memoize useCallback, so the
+    // flushed path spins on that effect's new identity. The tree shape, which is
+    // what this test pins, needs one pass only.
+    const opened = control.render(false)
+    const wrap = nodes(opened).find(n => n.props?.className === 'dshct-wrap')
+    assert.ok(
+      !inlineNodes(wrap.props?.children).some(n => n.props?.className === 'dshct-overlay'),
+      'the overlay must not stay inside the composer card: container-type on the tool row would center it there',
+    )
+    assert.ok(
+      portals(opened).some(p => nodes(p.children).some(n => n.props?.className === 'dshct-overlay')),
+      'the overlay must render through the portal',
+    )
+  } finally {
+    control.unmount()
+    scope.document = realDocument
+  }
+})
 
 test('closed composer still subscribes and every guard kind renders a pending card', () => {
   const control = mountControl()
