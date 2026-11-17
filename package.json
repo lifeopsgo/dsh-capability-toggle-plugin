@@ -36,7 +36,6 @@
     "cordis.patch.yml",
     "LICENSE",
     "README.md",
-    "README.zh-CN.md",
     "docs/demo.gif"
   ],
   "scripts": {

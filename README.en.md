@@ -5,11 +5,11 @@
 **Control agent capabilities from the DSH WebUI — with real runtime enforcement.**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#quick-start)
-![tests](https://img.shields.io/badge/tests-381%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-414%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
-[![中文](https://img.shields.io/badge/README-中文-red?style=flat-square)](./README.md) [![English](https://img.shields.io/badge/README-English-blue?style=flat-square)](./README.en.md) [![详细中文](https://img.shields.io/badge/README-详细中文-orange?style=flat-square)](./README.zh-CN.md)
+[![中文](https://img.shields.io/badge/README-中文-red?style=flat-square)](./README.md) [![English](https://img.shields.io/badge/README-English-blue?style=flat-square)](./README.en.md)
 
 <img alt="Capability controls for Skills, MCP, Tools, Prompt, and Security" src="./docs/demo.gif" width="900">
 
@@ -66,7 +66,7 @@ Restart the existing DSH Web GUI process, then refresh the page. Start it with t
 dsh --profile web web
 ```
 
-Open the control beside the ➕ button while the agent is idle. Replace `web` with another profile name when needed.
+Open the control beside the ➕ button. The panel opens while an agent runs — writes land once it is idle. Replace `web` with another profile name when needed.
 
 <details>
 <summary>Upgrade or remove</summary>
@@ -156,6 +156,15 @@ Narrowing the level columns is **display-only**: the three-level resolution keep
 Text in the popup and in the blocking-guard card can be selected with the mouse and copied with Ctrl+C; dragging across a button label selects it without also triggering the button.
 
 Additional behavior: while the agent runs, the controls that write a stance lock — each row's level switches, their clear badges, and the bulk menus — but browsing stays open, so the search box, the level-column selector, the tabs, and a row's expand still work. State survives popup close and turn boundaries, and the UI follows the WebUI language.
+
+## Development
+
+Requires Node.js ^22.19.0 or >= 24.0.0 (same as DSH 0.2.x).
+
+```bash
+pnpm install
+pnpm typecheck && pnpm build && pnpm test   # 414 tests
+```
 
 ## Roadmap
 

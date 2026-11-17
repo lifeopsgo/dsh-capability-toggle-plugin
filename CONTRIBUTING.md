@@ -36,7 +36,7 @@ hook or a local gate).
 1. Create a focused branch from `main`.
 2. Keep each change scoped to one concern.
 3. Add or update tests for behavior changes.
-4. Update both `README.md` and `README.zh-CN.md` when user-facing documentation changes.
+4. Update both `README.md` and `README.en.md` when user-facing documentation changes.
 5. Run type checking, tests, and the build before opening the pull request.
 6. Do not commit credentials, local DSH settings, generated source maps, or `node_modules`.
 

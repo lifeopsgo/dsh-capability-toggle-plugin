@@ -1,53 +1,173 @@
+<div align="center">
+
 # dsh-capability-toggle-plugin
 
-[![中文](https://img.shields.io/badge/README-中文-red?style=flat-square)](./README.md) [![English](https://img.shields.io/badge/README-English-blue?style=flat-square)](./README.en.md) [![详细中文](https://img.shields.io/badge/README-详细中文-orange?style=flat-square)](./README.zh-CN.md)
+**在 DSH WebUI 中控制 agent 能力，并在运行时真正强制执行。**
 
-一个 DSH（DeepSeek Harness）插件：在会话输入框上方开一个面板，把 agent 能用的能力逐个打开或关掉。关掉的能力 agent 就看不见了——工具列表里没有、skill 目录里没有，强行调用会被直接拦截。
+[![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#快速开始)
+![tests](https://img.shields.io/badge/tests-414%20passing-3fb950?style=flat-square)
+[![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
+[![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
-## 能关什么
+[![中文](https://img.shields.io/badge/README-中文-red?style=flat-square)](./README.md) [![English](https://img.shields.io/badge/README-English-blue?style=flat-square)](./README.en.md)
 
-- **skill**：一个一个关
-- **tool**：内置工具和 MCP 服务器的工具都能关
-- **MCP**：按服务器整体关，一次关掉它下面所有工具
+<img alt="技能、MCP、工具、提示词与安全能力开关" src="./docs/demo.gif" width="900">
 
-## 三层生效范围
+<sub>会话 · 项目 · 全局 —— 蓝色对勾 = 开，红色叉 = 关，虚线横杠 = 未设。</sub>
 
-每个能力有三个档位，层层覆盖，会话 > 项目 > 全局：
+</div>
 
-- **全局**：对所有会话生效
-- **项目**：只对这个项目目录下的会话生效
-- **会话**：只对当前这个会话生效
+## 这是什么
 
-关掉后想恢复，把对应档位清掉（回到「继承」）或改成开即可。设置保存在配置里，重启不丢。
+一个 **DeepSeek Harness（DSH）WebUI** 插件，在输入栏旁增加能力开关。它可以在会话、项目或全局层级控制**技能、MCP 服务器、工具、提示词注入、审批升权和安全守卫**。
 
-## 顺带的显示偏好
+停用不是界面上的假过滤：能力会在模型下一步从可见能力面中消失，强行调用也会在执行时被拦截。
 
-面板里还能设置输入框下方的统计显示：token 余量分数/百分比、用量、水位层级，只影响显示，不影响 agent 能力。
+## 兼容的 DSH 版本
 
-界面的六个开关（隐藏 logo、隐藏新会话按钮等）已经拆到独立插件 [dsh-ui-toggle-plugin](https://github.com/lifeopsgo/dsh-ui-toggle-plugin)，本插件不再包含。
+本插件面向 **DSH 0.2 世代**，peer 声明为一条区间：
 
-## 安装
+```
+>=0.2.0-0 <0.3.0-0
+```
+
+含义是「0.2 的任意版本，含预发布」。npm 上的 DSH 全部版本都是 prerelease，逐条枚举 rc 的结果就是官方每发一版，插件在启动时被判定不兼容并整包跳过；v2.4.0 起改为按世代声明的区间，0.2 线上的新 rc 不再需要改版本号。
+
+上界刻意写成 `<0.3.0-0` 而不是 `<0.3.0`：DSH 的兼容校验按 `includePrerelease: true` 计算 semver，`0.3.0-rc.1` 排在 `0.3.0` 之下，写 `<0.3.0` 会把它放进来。0.3 世代属于破坏性变更，必须拦住。
+
+**已验证的运行时**
+
+| DSH 版本 | 验证方式 |
+| --- | --- |
+| 0.2.0-rc.1 | v2.0.1 时在该依赖下全量跑绿（380 项） |
+| 0.2.1-rc.2 | v2.1.0 时的同套门禁，含浏览器端实测 |
+| 0.2.1-rc.5 | v2.3.0 时的类型检查、412 项测试与生产构建 |
+| 0.2.2-rc.3 | v2.4.0 时的类型检查、412 项测试、生产构建，并在该运行时里确认宿主配置条目与客户端插槽占用均生效 |
+
+**区间能表达「能不能装」，表达不了「某个 API 在不在」。** 插件依赖两条宿主接缝——composer 的 `data-composer-overlay` 放行口与 `inputTriggers` 的 source 名单——两者都有测试对已安装产物断言；接缝消失时相关功能退化为不生效，不会让整个插件报错。其余 0.2.x 版本没有再逐版跑过门禁，跑门禁的成本请按上表推算。
+
+## 快速开始
+
+需要 **Node.js ^22.19.0 或 ≥ 24.0.0**（与 DSH 0.2.x 相同）。
 
 ```bash
 dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.4.1
 dsh --profile web web
 ```
 
-装好后，等会话里有 agent 在跑时，点输入框上方的开关按钮打开面板（agent 空闲时面板打不开，这是设计如此）。
+刷新页面，点击输入栏 ➕ 旁边的开关按钮打开面板。agent 运行中也能打开查看，但改动要等它空闲才能落盘。若使用其他 profile，请替换 `web`。
 
-卸载：`dsh plugin --profile web remove dsh-capability-toggle-plugin`
+<details>
+<summary>升级或卸载</summary>
 
-## 兼容性
+```bash
+# 升级或降级：tag 换成 releases 页面上的任意版本
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.4.1
 
-面向整个 DSH 0.2 世代：peer 区间为 `>=0.2.0-0 <0.3.0-0`，0.2 线上的新 rc 不需要改版本号。已在 0.2.0-rc.1、0.2.1-rc.2、0.2.1-rc.5、0.2.2-rc.3 上验证过门禁。
+# 卸载
+dsh plugin --profile web remove dsh-capability-toggle-plugin
+```
+
+</details>
+
+## 功能说明
+
+### 三级生效模型
+
+每项能力都有三个独立层级：
+
+```text
+会话  ›  项目  ›  全局  ›  默认（启用）
+```
+
+最近的明确设置优先。**未设**会向下一层跟随；三层都未设时保持启用。行尾徽标始终显示三级综合后的真实结果。
+
+按钮只显示当前状态：点击在**开 ↔ 关**之间切换，点击右上角清除角标可回到**未设**。
+
+### 能力分类
+
+| Tab | 控制内容 |
+| :-- | :-- |
+| **技能** | 单个模型可调用技能，包含从会话工作区发现的项目级技能（`.dsh/skills`、`.agents/skills`） |
+| **MCP** | MCP 服务器；展开行可查看成员工具 |
+| **工具** | 单个模型可见工具及其指导段 |
+| **提示词** | 经过安全筛选并探测实际存在性的提示词注入项 |
+| **安全** | 审批升权和 5 个可选安全守卫 |
+
+### 强制机制
+
+所有机制只作用于当前 agent，不修改全局注册。
+
+| 能力族 | 强制方式 |
+| :-- | :-- |
+| `tool` | 通过 `ctx.tools.restrict({ deny })` 移除；强行调用被拒绝，`tool:<name>` 指导段同时被影子化移出提示词 |
+| `mcp` | 成员工具通过 `ctx.tools.restrict({ deny })` 移除；服务器的 `mcp:<server>` 指令段（即 `### MCP server: <名称>` 块，含「先调 kb.recall」这类强制指令）被影子化移出提示词；共享资源调用（`list_mcp_resources` / `list_mcp_resource_templates` / `read_mcp_resource`）点名已停用服务器时被拒绝 |
+| `skill` | 用同名 `modelInvocable:false` 运行时技能覆盖 |
+| `prompt` | 用空文本覆盖，或通过 `suppressRuntimeContext()` 抑制 |
+| `approval` | scoped 审批请求直接返回 `rejected` |
+| `guard` | `tools/pre-execute` 对命中调用执行拦截或确认 |
+
+### 安全控制
+
+关闭**审批升权**后，该 agent 的所有审批请求都会被拒绝，但不会修改系统 `/permission` 设置。
+
+安全守卫默认关闭，按需启用：
+
+| 守卫 | 动作 |
+| :-- | :-- |
+| 只读模式 | 拦截文件写入、新建和编辑 |
+| 保护密钥 | 拦截常见密钥文件与凭据访问 |
+| 危险 shell | 高风险 shell 命令需确认 |
+| 破坏性 git | 可能丢失历史或工作区内容的 git 命令需确认 |
+| 外网出站 | 网络工具与外连 shell 操作需确认 |
+
+### 用量统计
+
+技能、MCP 服务与工具行会显示一个小徽章，标明本会话模型调用了多少次（「调用 7 次」）。计数在面板打开时于每轮结束后刷新，只存活于单个 agent 生命周期且不持久化——与安全守卫的「命中 N 次」徽章采用同一保留策略。
+
+统计的是**请求次数**而非成功执行次数：被守卫拦截或转确认的调用同样计入，因为「模型想要用这个能力」本身就是值得看见的信号。守卫是被调用匹配而非被调用，因此沿用自己的徽章、不显示用量；提示词与审批行同样不显示。
+
+### 面板偏好
+
+面板标题旁的折叠箭头展开四个设置项，存入 `localStorage`，因此刷新页面与重启浏览器后仍然保留：
+
+| 偏好 | 作用 |
+| :-- | :-- |
+| **标签页显示「启用数 / 总数」** | tab 徽章由纯总数改为分数形式（`67/106`），一眼看出每族能力的启用比例；无论开关与否，悬停提示都以文字给出两个数字。 |
+| **显示调用统计** | 控制上文的每行用量徽章是否显示。 |
+| **显示的层级列** | 将网格收窄为仅会话级、会话级 + 项目级，或三级全显。 |
+| **禁用 @ 会话引用** | 在输入框敲 `@` 时只列出文件，不再列出历史会话与子智能体会话。只影响候选菜单，已写进草稿的 `@` 引用照常解析；设置存在本机 `localStorage`，只对当前浏览器生效，宿主的会话检索请求仍会发出。 |
+
+分数只把**已生效**的守卫计入启用数。guard 行复用同一个 `disabled` 字段表示「已激活」，与其他默认启用族的方向相反——所以审批开关打开、五个守卫都未激活时，安全 tab 显示 `1/6` 而不是 `6/6`。
+
+收窄层级列**只影响显示**：三级优先级解析照常运行，被隐藏的项目级或全局级设定仍然生效。每行的徽章与层级开关始终反映综合解析后的状态——默认启用族显示「生效中/已停用」，守卫显示「守护中/未启用」——因此隐藏一列不会隐藏任何生效影响。名称列会吸收释放出来的宽度；布局由 CSS 变量驱动，因此与窄屏适配保持对齐。
+
+弹层与阻断确认卡片里的文字可以用鼠标选中、按 Ctrl+C 复制；在按钮文字上拖选不会顺带触发那个按钮。
+
+其他行为：agent 运行时，会写入设定的控件锁定——每行的层级开关、其清除徽章、以及批量菜单——但浏览保持可用，因此搜索框、层级列下拉、tab 切换、行展开照常工作；关闭弹窗或跨轮次后状态仍保留；界面语言跟随 WebUI。
 
 ## 开发
 
+需要 Node.js ^22.19.0 或 ≥ 24.0.0（与 DSH 0.2.x 相同）。
+
 ```bash
 pnpm install
-pnpm typecheck && pnpm build && pnpm test   # 381 项测试
+pnpm typecheck && pnpm build && pnpm test   # 414 项测试
 ```
 
-实现细节见 [README.en.md](./README.en.md)（英文）与 [README.zh-CN.md](./README.zh-CN.md)（详细中文）。
+## 规划
 
-MIT
+以下为规划中、尚未实现：
+
+- **跨项目同步配置** — 从其他项目复制或引用项目级配置，无需逐个项目重新配置。
+- ~~**能力调用统计**~~ — 已于 v1.2.0 实现：技能、MCP 服务与工具行会以徽章显示本会话被模型调用的次数。
+- ~~**分数格式的 tab 计数**~~ — 已于 v1.3.0 实现：tab 徽章改为「已启用 / 总数」，面板标题旁的折叠箭头提供三个显示偏好。安全 tab 的 guard 只有已生效才计入分子，其反转的 `disabled` 字段不会虚增启用数。
+- **可自定义默认项的设置菜单** — 在设置菜单中暴露插件自身的配置项，例如新发现能力的默认状态（当前三层都未设的能力解析为启用，但可选的安全守卫默认不启用）。
+- **只显示已启用 / 只显示已禁用** — 在搜索框旁增加状态过滤（搜索当前只匹配名称与描述）。安全守卫需要与分数计数同样的处理：guard 复用 `disabled` 表示「已激活」，因此「只显示已禁用」不能把实际生效中的守卫列进去。该过滤还会缩小批量操作的作用范围，因为批量作用于当前可见的所有行。
+- ~~**筛选与全选**~~ — 已于 v1.1.0 实现：工具栏搜索框可筛选行，各层级的批量菜单可对当前可见的所有行执行启用/停用/清除。
+- ~~**筛选全选后批量操作**~~ — 已于 v1.1.0 与筛选功能一同交付（搜索缩小范围，批量作用于当前可见行）。
+- ~~**侧栏界面开关**~~ — 已由伴生插件 **dsh-ui-toggle-plugin** 交付（设置内独立的「UI 开关」分区）：隐藏侧栏品牌区、左下角仅保留设置按钮、全局面板图标横排、隐藏「新会话」与「收起侧边栏」按钮、隐藏输入框占位文案，全部即改即生效，且首次启动时自动迁移本插件已存的开关值。
+
+---
+
+<div align="center"><sub>MIT — 见 <a href="./LICENSE">LICENSE</a></sub></div>
