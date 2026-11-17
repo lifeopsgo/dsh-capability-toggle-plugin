@@ -99,7 +99,7 @@
     "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
     "@deepseek-ai/dsh-user-approval": "0.2.2-rc.3",
     "@deepseek-ai/schemastery": "3.19.0",
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.6.6",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "react": "18.3.1",
