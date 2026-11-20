@@ -1,6 +1,6 @@
 {
   "name": "dsh-capability-toggle-plugin",
-  "version": "2.4.1",
+  "version": "2.5.0",
   "private": true,
   "description": "DSH WebUI capability controls for skills, MCP servers, tools, prompt injections, approvals, and safety guards at session, project, and global levels.",
   "keywords": [

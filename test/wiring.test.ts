@@ -56,18 +56,19 @@ test('the controller stores the center and passes it into every binding', () => 
   // The center is kept as a constructor parameter property, which is the store.
   assert.match(controller, /private readonly center\??: ConfirmationCenter/,
     'the controller must keep the center')
-  assert.match(controller, /new AgentBinding\(this\.store, this\.hostCtx, agent, this\.center, this\.onDrift\)/,
-    'the controller must pass the center into each binding')
+  assert.match(controller, /new AgentBinding\(this\.store, this\.hostCtx, agent, this\.parentOf, this\.center, this\.onDrift\)/,
+    'the controller must pass the center and the recorded lineage into each binding')
 })
 
-test('the binding builds a confirmer keyed on the SESSION, never the project', () => {
+test('the binding builds a confirmer keyed on the SESSION chain, never the project', () => {
   const binding = src('host/agent-binding.ts')
-  // The browser subscribes with its session id, and the guard must ask with the
-  // same key. The project key makes hasChannel always false, the confirmer answers
-  // null, and the call falls back to the native approval path.
-  const call = binding.match(/makeGuardConfirmer\(this\.center,\s*([^)]*)\)/)
+  // The browser subscribes with a session id, and the guard must ask with a
+  // session id — its own, or an ancestor's when the guard is inherited. The
+  // project key makes hasChannel always false, the confirmer answers null, and
+  // the call falls back to the native approval path.
+  const call = binding.match(/makeGuardConfirmer\(this\.center,\s*(.+)\)\n/)
   assert.ok(call, 'the binding must build a guard confirmer')
-  assert.match(call[1], /sessionKey/, `the confirmer must be keyed on sessionKey, saw: ${call[1]}`)
+  assert.match(call[1], /sessionChain\(\)/, `the confirmer must be keyed on the session chain, saw: ${call[1]}`)
   assert.doesNotMatch(call[1], /projectKey/, 'the confirmer must never be keyed on the project key')
 })
 
@@ -84,7 +85,7 @@ test('the binding installs a dynamic capability gate before async inventory refr
   assert.match(reconcile, /this\.installCapabilityGate\(\)/)
   assert.match(
     binding,
-    /private installCapabilityGate\(\): void \{\s*if \(this\.scopeKey === undefined\) return\s*this\.disposers\.push\(applyCapabilityGate\(this\.scopedCtx, \(\) => this\.store\.layered\(this\.projectKey, this\.sessionKey\)\)\)\s*\}/,
+    /private installCapabilityGate\(\): void \{\s*if \(this\.scopeKey === undefined\) return\s*this\.disposers\.push\(applyCapabilityGate\(this\.scopedCtx, \(\) => this\.store\.layeredChain\(this\.projectKey, this\.sessionChain\(\)\)\)\)\s*\}/,
     'the gate must delegate to applyCapabilityGate with this agent\'s live layered read, and only on a real scope',
   )
 })

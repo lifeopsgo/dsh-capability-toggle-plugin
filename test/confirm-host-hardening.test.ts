@@ -107,6 +107,31 @@ test('dispose tolerates throwing end and still closes every channel', async () =
   assert.equal(center.hasChannel('s2'), false)
 })
 
+test('an inherited guard asks through the nearest ancestor session that has a browser', async () => {
+  const center = new ConfirmationCenter()
+  const sink = new Sink()
+  center.subscribe('root', sink)
+  assert.equal(center.hasChannel('child'), false)
+  // The guard is active in the child only because it is inherited from the
+  // parent session; asking the child's own channel would return null, and the
+  // preset's legacy `ask` denies silently when the deployment auto-rejects.
+  const confirmer = makeGuardConfirmer(center, () => ['root', 'child'])
+  const waiting = confirmer(confirmRequest())
+  await Promise.resolve()
+  const pending = center.pendingFor('root')
+  assert.equal(pending.length, 1, 'the card must surface on the session with a browser')
+  center.respond('root', pending[0]!.id, 'allow')
+  assert.equal(await waiting, 'allow')
+  center.dispose()
+})
+
+test('an inherited guard with no browser anywhere still fails closed', async () => {
+  const center = new ConfirmationCenter()
+  const confirmer = makeGuardConfirmer(center, () => ['root', 'child'])
+  assert.equal(await confirmer(confirmRequest()), null)
+  center.dispose()
+})
+
 test('disposed confirmer fails closed rather than returning legacy ask', async () => {
   const center = new ConfirmationCenter()
   const confirmer = makeGuardConfirmer(center, 's1')

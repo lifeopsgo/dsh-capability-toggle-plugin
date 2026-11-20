@@ -4,6 +4,7 @@ import type { LayeredOverrides, OverrideMap, ToggleLevel, ToggleState } from '..
 import { LEVEL_PRIORITY } from '../shared/resolve.ts'
 import type { OverrideConfig, StoredDocument } from './config.ts'
 import { mergeLegacyOverrides, readLegacyOverrides } from './legacy-migration.ts'
+import { mergeSessionStances } from './lineage.ts'
 
 export type LevelSelector =
   | { readonly level: 'global' }
@@ -36,10 +37,11 @@ export class OverrideStore {
       : mergeLegacyOverrides(current, this.legacy)
   }
 
-  layered(projectKey: string, sessionKey: string): LayeredOverrides {
+  layeredChain(projectKey: string, chain: readonly string[]): LayeredOverrides {
     const doc = this.read()
     return {
-      session: doc.sessions[sessionKey] ?? {},
+      session: mergeSessionStances(chain.map(id => doc.sessions[id])),
+      ownSession: doc.sessions[chain[chain.length - 1] ?? ''] ?? {},
       project: projectKey === '' ? {} : (doc.projects[projectKey] ?? {}),
       global: doc.global,
     }

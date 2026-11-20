@@ -5,7 +5,7 @@
 **Control agent capabilities from the DSH WebUI — with real runtime enforcement.**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#quick-start)
-![tests](https://img.shields.io/badge/tests-414%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-426%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -57,7 +57,7 @@ run through the gates one by one.
 Requires **Node.js ^22.19.0 or ≥ 24.0.0** (same as DSH 0.2.x).
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.4.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.5.0
 ```
 
 Restart the existing DSH Web GUI process, then refresh the page. Start it with the command below when it is stopped:
@@ -73,7 +73,7 @@ Open the control beside the ➕ button. The panel opens while an agent runs — 
 
 ```bash
 # Upgrade or downgrade: use any tag listed on the releases page
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.4.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.5.0
 
 # Remove
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -91,7 +91,11 @@ Each capability has three independent levels:
 session  ›  project  ›  global  ›  default (enabled)
 ```
 
-The nearest explicit value wins. **Unset** defers to the next level; with every level unset, the capability remains enabled. The row badge always shows the resolved result.
+Precedence is **session › project › global**; an **Unset** level defers to the next, and with every level unset the capability remains enabled. The row badge always shows the resolved result.
+
+**Session level reaches a session's subagents.** A subagent reads the same session layer as the session that spawned it: what you switch off there is off for the child too, and what you switch on there still overrides a project-level off for the child. A stance written on the subagent's own session ranks after the inherited one, so adjusting one child never leaks back to its parent. A subagent's panel shows only its own session entries; the inherited part still counts, and the row badge is the authoritative result.
+
+Inheritance follows the parent-child links the runtime recorded. A child restored on its own, with its parent absent, can only inherit the one parent link in its own header.
 
 The button displays only its current state: click to toggle **on ↔ off**, or use its small clear badge to return to **unset**.
 

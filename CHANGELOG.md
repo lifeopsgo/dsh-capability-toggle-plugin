@@ -4,6 +4,39 @@ All notable changes to this project are documented here.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [2.5.0] - 2026-11-20
+
+### Changed
+
+- **Session-level stances now reach the session's subagents.** A subagent runs
+  as its own session, so it used to resolve the session layer from its own —
+  normally empty — entries: a capability switched off at session level came back
+  on for the child, and a capability switched on there over a project-level off
+  came back off. The session layer is now resolved over the chain of sessions
+  from the owner down to the agent, so the parent's session stances apply to the
+  subagents it spawns. Entries written on a subagent's own session rank after the
+  inherited ones, so a per-child tweak never leaks back to the parent.
+
+- **A guard inherited from the parent session asks in the parent's panel.** The
+  confirmation channel is per session, so an inherited `ask` guard used to find
+  no browser in the child and fall back to the preset's native ask. The confirmer
+  now walks the chain and uses the nearest session with a subscribed browser.
+
+- The panel's precedence note says that session level applies to subagents, and
+  both READMEs document the inheritance.
+
+### Development
+
+- `OverrideStore.layeredChain()` merges the session maps of a chain root-first.
+  It also carries the agent's own map as `ownSession`, which the projection uses
+  for the session column so a subagent's panel never shows an inherited value as
+  its own stance. `src/host/lineage.ts` holds the pure chain walk and the merge,
+  kept free of framework imports so the Node test loader can exercise it.
+
+- The registry records `session.parentSession` for sessions whose header says
+  `origin: 'subagent'`, and keeps that link after a binding disposes so a child
+  still resolves an ancestor's stances.
+
 ## [2.4.1] - 2026-11-17
 
 ### Fixed

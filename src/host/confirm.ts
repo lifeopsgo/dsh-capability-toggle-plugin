@@ -230,12 +230,14 @@ function confirmEvent(entry: Entry): Record<string, unknown> {
  */
 export function makeGuardConfirmer(
   center: ConfirmationCenter,
-  session: string,
+  session: string | (() => readonly string[]),
 ): GuardConfirmer {
+  const sessions = (): readonly string[] => (typeof session === 'string' ? [session] : session())
   return async (req: GuardConfirmRequest) => {
     if (center.isDisposed || req.signal.aborted) return 'deny'
-    if (!center.hasChannel(session)) return null
-    const outcome = await center.request(session, {
+    const channel = [...sessions()].reverse().find(id => center.hasChannel(id))
+    if (channel === undefined) return null
+    const outcome = await center.request(channel, {
       guardId: req.hit.id,
       guardAction: req.hit.decision.kind,
       reason: req.hit.decision.reason ?? '',

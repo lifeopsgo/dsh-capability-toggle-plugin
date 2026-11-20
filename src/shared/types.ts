@@ -103,6 +103,7 @@ export interface LayeredOverrides {
   readonly session: OverrideMap
   readonly project: OverrideMap
   readonly global: OverrideMap
+  readonly ownSession?: OverrideMap
 }
 
 /**

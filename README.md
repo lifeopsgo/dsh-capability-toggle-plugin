@@ -5,7 +5,7 @@
 **在 DSH WebUI 中控制 agent 能力，并在运行时真正强制执行。**
 
 [![platform](https://img.shields.io/badge/platform-DSH%20WebUI-2b7cd3?style=flat-square)](#快速开始)
-![tests](https://img.shields.io/badge/tests-414%20passing-3fb950?style=flat-square)
+![tests](https://img.shields.io/badge/tests-426%20passing-3fb950?style=flat-square)
 [![release](https://img.shields.io/github/v/release/lifeopsgo/dsh-capability-toggle-plugin?style=flat-square)](https://github.com/lifeopsgo/dsh-capability-toggle-plugin/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
@@ -51,7 +51,7 @@
 需要 **Node.js ^22.19.0 或 ≥ 24.0.0**（与 DSH 0.2.x 相同）。
 
 ```bash
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.4.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.5.0
 dsh --profile web web
 ```
 
@@ -62,7 +62,7 @@ dsh --profile web web
 
 ```bash
 # 升级或降级：tag 换成 releases 页面上的任意版本
-dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.4.1
+dsh plugin --profile web add github:lifeopsgo/dsh-capability-toggle-plugin#v2.5.0
 
 # 卸载
 dsh plugin --profile web remove dsh-capability-toggle-plugin
@@ -80,7 +80,11 @@ dsh plugin --profile web remove dsh-capability-toggle-plugin
 会话  ›  项目  ›  全局  ›  默认（启用）
 ```
 
-最近的明确设置优先。**未设**会向下一层跟随；三层都未设时保持启用。行尾徽标始终显示三级综合后的真实结果。
+优先顺序是**会话 › 项目 › 全局**，某层**未设**就向下一层跟随；三层都未设时保持启用。行尾徽标始终显示综合后的真实结果。
+
+**会话级对子 agent 生效。** 本会话派生的子 agent 读取同一份会话级设置：你在会话级关掉的能力，子 agent 也用不了；你在会话级打开、而项目级本来关掉的能力，子 agent 照样可用。子 agent 会话自己写的会话级设置排在继承值之后生效，所以单独调整某个子 agent 不会反过来影响父会话。子 agent 的面板只显示它自己写的会话级设置，实际生效包含继承来的那部分，以行尾徽标为准。
+
+继承按运行时记录的父子会话关系走；如果子会话是在父会话不在场时被单独恢复的，只有它自己头部里记的那一层父会话能被继承。
 
 按钮只显示当前状态：点击在**开 ↔ 关**之间切换，点击右上角清除角标可回到**未设**。
 

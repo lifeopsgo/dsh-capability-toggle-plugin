@@ -13,6 +13,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityDescriptor, CapabilityToggleProjection } from '../shared/types.ts'
 import { buildProjection } from '../shared/resolve.ts'
 import { AgentBinding } from './agent-binding.ts'
+import { sessionChain } from './lineage.ts'
 import type { ConfirmationCenter } from './confirm.ts'
 import type { DriftSink } from './inventory.ts'
 import type { OverrideStore } from './store.ts'
@@ -47,6 +48,7 @@ export class ControllerRegistry {
    * Read only by the no-live-agent fallback read.
    */
   private readonly lastKnown = new Map<string, InventorySnapshot>()
+  private readonly parentOf = new Map<string, string>()
 
   /**
    * @param store - the shared override store.
@@ -70,7 +72,11 @@ export class ControllerRegistry {
    * @returns the created binding.
    */
   async add(agent: Agent): Promise<AgentBinding> {
-    const binding = new AgentBinding(this.store, this.hostCtx, agent, this.center, this.onDrift)
+    const { origin, parentSession } = agent.session.header
+    if (origin === 'subagent' && parentSession !== undefined) {
+      this.parentOf.set(agent.session.id, parentSession)
+    }
+    const binding = new AgentBinding(this.store, this.hostCtx, agent, this.parentOf, this.center, this.onDrift)
     const existing = this.bindings.get(agent.session.id)
     existing?.destroy()
     this.bindings.set(agent.session.id, binding)
@@ -123,7 +129,7 @@ export class ControllerRegistry {
   fallbackProjection(sessionId: string): CapabilityToggleProjection | undefined {
     const snapshot = this.lastKnown.get(sessionId)
     if (snapshot === undefined) return undefined
-    const overrides = this.store.layered(snapshot.projectKey, sessionId)
+    const overrides = this.store.layeredChain(snapshot.projectKey, sessionChain(this.parentOf, sessionId))
     return buildProjection(snapshot.inventory, overrides, snapshot.projectKey)
   }
 

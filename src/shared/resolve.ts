@@ -109,9 +109,9 @@ export function disabledIds(overrides: LayeredOverrides, ids: readonly string[])
  * passes its per-agent guard-hit tally) and the no-live-agent fallback read
  * (which has no running tally, so guard rows report zero hits). Keeping this a
  * pure function is what lets the panel show persisted state even when no agent
- * is currently bound: the effect a row reports is `store.layered()` resolved
- * against a known inventory, independent of whether enforcement is applied
- * right now.
+ * is currently bound: the effect a row reports is the store's layered read
+ * resolved against a known inventory, independent of whether enforcement is
+ * applied right now.
  *
  * A `guard` row is opt-in (default off): its resolved effect is ACTIVE
  * (`isGuardActive`, off fallback) and it carries a hit count. Every other
@@ -140,7 +140,7 @@ export function buildProjection(
 ): CapabilityToggleProjection {
   const rows: CapabilityRow[] = descriptors.map((d): CapabilityRow => {
     const levels: Record<ToggleLevel, ToggleState> = {
-      session: stanceAt(overrides.session, d.id),
+      session: stanceAt(overrides.ownSession ?? overrides.session, d.id),
       project: stanceAt(overrides.project, d.id),
       global: stanceAt(overrides.global, d.id),
     }

@@ -31,6 +31,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createScope, scopeOf } from '@deepseek-ai/dsh-scope'
+import { sessionChain as chainOf } from './lineage.ts'
 import type { Scope, ScopeKey } from '@deepseek-ai/dsh-scope'
 // Load the Context service augmentations these seams live on (program-wide).
 import type {} from '@deepseek-ai/dsh-tools'
@@ -79,6 +80,8 @@ function scopeLabel(projectKey: string): string {
  * demand. Not reused across agents.
  */
 export class AgentBinding {
+  private readonly parentOf: ReadonlyMap<string, string>
+
   private readonly scopeKey: ScopeKey | undefined
   /**
    * A context that inherits THIS plugin's `skills`/`tools` inject but carries
@@ -134,9 +137,11 @@ export class AgentBinding {
     private readonly store: OverrideStore,
     hostCtx: Context,
     private readonly agent: Agent,
+    parentOf: ReadonlyMap<string, string>,
     private readonly center?: ConfirmationCenter,
     private readonly onDrift?: DriftSink,
   ) {
+    this.parentOf = parentOf
     this.scopeKey = scopeOf(agent.ctx)
     this.projectKey = projectKeyOf(agent)
     this.sessionKey = agent.session.id
@@ -184,6 +189,10 @@ export class AgentBinding {
     return collectInventory(this.scopedCtx, this.scopeKey, this.agent.session.header.cwd, this.onDrift)
   }
 
+  private sessionChain(): readonly string[] {
+    return chainOf(this.parentOf, this.sessionKey)
+  }
+
   /**
    * The set of switch ids resolved to disabled for this agent, over an
    * already-collected inventory.
@@ -191,7 +200,7 @@ export class AgentBinding {
    * @returns the disabled switch ids.
    */
   disabledSet(descriptors: readonly CapabilityDescriptor[]): Set<string> {
-    const overrides = this.store.layered(this.projectKey, this.sessionKey)
+    const overrides = this.store.layeredChain(this.projectKey, this.sessionChain())
     return new Set(disabledIds(overrides, descriptors.map(d => d.id)))
   }
 
@@ -314,11 +323,11 @@ export class AgentBinding {
    */
   private installGuards(): void {
     if (this.scopeKey === undefined) return
-    const overrides = this.store.layered(this.projectKey, this.sessionKey)
+    const overrides = this.store.layeredChain(this.projectKey, this.sessionChain())
     const activeGuards = new Set(GUARD_IDS.filter(id => isGuardActive(overrides, id)))
     const confirmer = this.center === undefined
       ? undefined
-      : makeGuardConfirmer(this.center, this.sessionKey)
+      : makeGuardConfirmer(this.center, () => this.sessionChain())
     for (const dispose of applyGuards(this.scopedCtx, activeGuards, (id) => {
       this.guardHits.set(id, (this.guardHits.get(id) ?? 0) + 1)
     }, confirmer)) {
@@ -335,7 +344,7 @@ export class AgentBinding {
 
   private installCapabilityGate(): void {
     if (this.scopeKey === undefined) return
-    this.disposers.push(applyCapabilityGate(this.scopedCtx, () => this.store.layered(this.projectKey, this.sessionKey)))
+    this.disposers.push(applyCapabilityGate(this.scopedCtx, () => this.store.layeredChain(this.projectKey, this.sessionChain())))
   }
 
   /**
@@ -349,7 +358,7 @@ export class AgentBinding {
     // fallback read (see shared/resolve.ts buildProjection). This binding passes
     // its live per-agent guard-hit tally; the fallback path has none and reports
     // zero hits.
-    const overrides = this.store.layered(this.projectKey, this.sessionKey)
+    const overrides = this.store.layeredChain(this.projectKey, this.sessionChain())
     return buildProjection(descriptors, overrides, this.projectKey, this.guardHits, this.callHits)
   }
 
